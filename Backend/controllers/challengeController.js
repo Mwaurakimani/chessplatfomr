@@ -69,3 +69,13 @@ export const createMatch = asyncHandler(async (req, res) => {
 
   res.json({ player1Url, player2Url })
 })
+
+export const validatePlayerController = asyncHandler(async (req, res) => {
+  const { username, platform } = req.body;
+  if (!username || !platform) {
+    res.status(400);
+    throw new Error('username and platform are required');
+  }
+  const result = await validatePlayer(username, platform);
+  res.json(result);
+});

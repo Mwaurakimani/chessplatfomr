@@ -1,4 +1,3 @@
-
 import React, { createContext, useContext, useState, useEffect } from 'react';
 
 interface User {
@@ -56,16 +55,39 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const login = async (email: string, password: string): Promise<boolean> => {
-    // Simulate API call - this will be replaced with actual backend call
     try {
-      // For demo purposes, check if user exists in localStorage
-      const storedUsers = JSON.parse(localStorage.getItem('chess_users') || '[]');
-      const foundUser = storedUsers.find((u: any) => u.email === email && u.password === password);
+      // The login API call is now handled in the Login component
+      // We just need to set up the user session here using the response data
+      const response = await fetch('http://localhost:3000/api/auth/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email, password }),
+      });
+
+      const data = await response.json();
       
-      if (foundUser) {
-        const { password: _, ...userWithoutPassword } = foundUser;
-        setUser(userWithoutPassword);
-        localStorage.setItem('chess_user', JSON.stringify(userWithoutPassword));
+      if (data.success) {
+        // Create a user object from the response data
+        const userObject: User = {
+          id: data.user.id,
+          email: data.user.email,
+          username: data.user.username,
+          name: data.user.name || data.user.username,
+          phone: data.user.phone || "",
+          rating: data.user.rating || 1200,
+          rank: data.user.rank || "Beginner",
+          country: data.user.country || "🇰🇪",
+          chessComUsername: data.user.chessComUsername,
+          lichessUsername: data.user.lichessUsername,
+          preferredPlatform: data.user.preferredPlatform || "chess.com",
+          catchphrase: data.user.catchphrase || "Ready to play!"
+        };
+
+        setUser(userObject);
+        localStorage.setItem('chess_user', JSON.stringify(userObject));
+        localStorage.setItem('token', data.token);
         return true;
       }
       return false;

@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -7,6 +6,8 @@ import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/components/contexts/AuthContext';
 import Header from '@/components/Header';
+import { Check, X } from 'lucide-react';
+import debounce from 'lodash.debounce';
 
 const Register = () => {
   const [formData, setFormData] = useState({
@@ -25,6 +26,55 @@ const Register = () => {
   const { toast } = useToast();
   const navigate = useNavigate();
 
+  const [chessComValidation, setChessComValidation] = useState<'idle' | 'valid' | 'invalid' | 'loading'>('idle');
+  const [lichessValidation, setLichessValidation] = useState<'idle' | 'valid' | 'invalid' | 'loading'>('idle');
+
+  const validateUsername = async (username: string, platform: 'chess.com' | 'lichess.org', setValidation: (v: any) => void) => {
+    if (!username) {
+      setValidation('idle');
+      return;
+    }
+    setValidation('loading');
+    try {
+      const res = await fetch('/api/match/validate-player', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, platform })
+      });
+      const data = await res.json();
+      if (data.valid) {
+        setValidation('valid');
+      } else {
+        setValidation('invalid');
+      }
+    } catch {
+      setValidation('invalid');
+    }
+  };
+
+  const debouncedValidateChessCom = React.useMemo(() => debounce((username: string) => {
+    validateUsername(username, 'chess.com', setChessComValidation);
+  }, 500), []);
+  const debouncedValidateLichess = React.useMemo(() => debounce((username: string) => {
+    validateUsername(username, 'lichess.org', setLichessValidation);
+  }, 500), []);
+
+  React.useEffect(() => {
+    if (formData.chessComUsername) {
+      debouncedValidateChessCom(formData.chessComUsername);
+    } else {
+      setChessComValidation('idle');
+    }
+  }, [formData.chessComUsername]);
+
+  React.useEffect(() => {
+    if (formData.lichessUsername) {
+      debouncedValidateLichess(formData.lichessUsername);
+    } else {
+      setLichessValidation('idle');
+    }
+  }, [formData.lichessUsername]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -37,7 +87,7 @@ const Register = () => {
       return;
     }
 
-        // Validate that at least one chess platform username is provided
+    // Validate that at least one chess platform username is provided
     if (!formData.chessComUsername && !formData.lichessUsername) {
       toast({
         title: "Chess platform required",
@@ -64,27 +114,35 @@ const Register = () => {
     setIsLoading(true);
 
     try {
-      const success = await signup({
-        email: formData.email,
-        password: formData.password,
-        username: formData.username,
-        phone: formData.phone,
-        name: formData.username,
-        chessComUsername: formData.chessComUsername || undefined,
-        lichessUsername: formData.lichessUsername || undefined,
-        preferredPlatform: formData.preferredPlatform
+      const response = await fetch('http://localhost:3000/api/auth/register', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email: formData.email,
+          password: formData.password,
+          username: formData.username,
+          phone: formData.phone,
+          name: formData.username,
+          chessComUsername: formData.chessComUsername || undefined,
+          lichessUsername: formData.lichessUsername || undefined,
+          preferredPlatform: formData.preferredPlatform
+        }),
       });
 
-      if (success) {
+      const data = await response.json();
+
+      if (data.success) {
         toast({
-          title: "Welcome to Chess Master!",
+          title: "Welcome to chequemate!",
           description: "Your account has been created successfully.",
         });
         navigate('/play');
       } else {
         toast({
           title: "Registration failed",
-          description: "Unable to create account. Please try again.",
+          description: data.message || "Unable to create account. Please try again.",
           variant: "destructive",
         });
       }
@@ -205,7 +263,7 @@ const Register = () => {
               </select>
             </div>
 
-            <div>
+            <div className="relative">
               <Label htmlFor="chessComUsername">
                 Chess.com Username {formData.preferredPlatform === 'chess.com' && '*'}
               </Label>
@@ -215,13 +273,20 @@ const Register = () => {
                 type="text"
                 value={formData.chessComUsername}
                 onChange={handleChange}
-                className="mt-1 bg-[#1a1a1a] border-gray-700 text-white"
+                className="mt-1 bg-[#1a1a1a] border-gray-700 text-white pr-10"
                 placeholder="Your Chess.com username"
                 required={formData.preferredPlatform === 'chess.com'}
               />
+              {formData.chessComUsername && (
+                <span className="absolute right-3 top-1/2 -translate-y-1/2">
+                  {chessComValidation === 'valid' && <Check className="text-green-500" />}
+                  {chessComValidation === 'invalid' && <X className="text-red-500" />}
+                  {chessComValidation === 'loading' && <span className="loader" />}
+                </span>
+              )}
             </div>
 
-            <div>
+            <div className="relative">
               <Label htmlFor="lichessUsername">
                 Lichess.org Username {formData.preferredPlatform === 'lichess.org' && '*'}
               </Label>
@@ -231,10 +296,17 @@ const Register = () => {
                 type="text"
                 value={formData.lichessUsername}
                 onChange={handleChange}
-                className="mt-1 bg-[#1a1a1a] border-gray-700 text-white"
+                className="mt-1 bg-[#1a1a1a] border-gray-700 text-white pr-10"
                 placeholder="Your Lichess.org username"
                 required={formData.preferredPlatform === 'lichess.org'}
               />
+              {formData.lichessUsername && (
+                <span className="absolute right-3 top-1/2 -translate-y-1/2">
+                  {lichessValidation === 'valid' && <Check className="text-green-500" />}
+                  {lichessValidation === 'invalid' && <X className="text-red-500" />}
+                  {lichessValidation === 'loading' && <span className="loader" />}
+                </span>
+              )}
             </div>
           </div>
           <Button 
@@ -260,3 +332,4 @@ const Register = () => {
 };
 
 export default Register;
+  
