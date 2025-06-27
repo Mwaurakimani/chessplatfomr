@@ -6,13 +6,22 @@ import { useAuth } from '@/components/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import Header from '@/components/Header';
 import { Edit2, Trophy, Target, Calendar, Wallet, LogOut } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 
 const Profile = () => {
-    const { user, updateProfile, logout } = useAuth();
+  const { user, updateProfile, logout } = useAuth();
+  const { username } = useParams();
   const { toast } = useToast();
   const [isEditing, setIsEditing] = useState(false);
-    const [editedProfile, setEditedProfile] = useState(user || {
+  // If viewing another user's profile, load their data
+  let profileUser = user;
+  if (username && user?.username !== username) {
+    // Try to load from localStorage (for demo; use backend in production)
+    const usersArr = JSON.parse(localStorage.getItem('chess_users') || '[]');
+    const found = usersArr.find((u: any) => u.username === username);
+    if (found) profileUser = found;
+  }
+  const [editedProfile, setEditedProfile] = useState(profileUser || {
     name: "",
     username: "",
     email: "",
@@ -25,20 +34,89 @@ const Profile = () => {
     lichessUsername: "",
     preferredPlatform: "chess.com" as 'chess.com' | 'lichess.org'
   });
+  const chessProfile = profileUser?.chessProfile;
+  const chessStats = profileUser?.chessStats;
+  const chessGames = profileUser?.chessGames;
 
-  const matchHistory = [
-    { opponent: "Alex Chen", result: "Win", date: "2024-01-15", rating: "+12" },
-    { opponent: "Sarah Kumar", result: "Loss", date: "2024-01-14", rating: "-8" },
-    { opponent: "Diego Martinez", result: "Win", date: "2024-01-13", rating: "+15" }
-  ];
-
-  const stats = {
-    totalGames: 156,
-    wins: 98,
-    losses: 45,
-    draws: 13,
-    winRate: 63
+  // Chess.com example: stats.chess_rapid.last.rating, stats.chess_rapid.record.win, etc.
+  let rating = user?.rating;
+  let stats = {
+    totalGames: 0,
+    wins: 0,
+    losses: 0,
+    draws: 0,
+    winRate: 0
   };
+  let matchHistory: any[] = [];
+
+  if (chessStats) {
+    if (chessStats.chess_rapid) {
+      rating = chessStats.chess_rapid.last.rating;
+      stats.wins = chessStats.chess_rapid.record.win;
+      stats.losses = chessStats.chess_rapid.record.loss;
+      stats.draws = chessStats.chess_rapid.record.draw;
+      stats.totalGames = stats.wins + stats.losses + stats.draws;
+      stats.winRate = stats.totalGames > 0 ? Math.round((stats.wins / stats.totalGames) * 100) : 0;
+    } else if (chessStats.rapid) { // lichess
+      rating = chessStats.rapid.rating;
+      stats.wins = chessStats.rapid.games - chessStats.rapid.loss;
+      stats.losses = chessStats.rapid.loss;
+      stats.draws = chessStats.rapid.draw;
+      stats.totalGames = chessStats.rapid.games;
+      stats.winRate = stats.totalGames > 0 ? Math.round((stats.wins / stats.totalGames) * 100) : 0;
+    }
+  } else {
+    // fallback to demo
+    stats = {
+      totalGames: 156,
+      wins: 98,
+      losses: 45,
+      draws: 13,
+      winRate: 63
+    };
+  }
+
+  if (chessGames && chessGames.length > 0) {
+    matchHistory = chessGames.slice(0, 5).map(game => {
+      let result = 'Draw';
+      let ratingChange = '';
+      let opponent = '';
+      let date = '';
+      // Chess.com format
+      if (game.white && game.black) {
+        const isWhite = game.white.username === user?.chessComUsername;
+        const isBlack = game.black.username === user?.chessComUsername;
+        opponent = isWhite ? game.black.username : game.white.username;
+        if ((isWhite && game.white.result === 'win') || (isBlack && game.black.result === 'win')) {
+          result = 'Win';
+        } else if ((isWhite && game.white.result === 'checkmated') || (isBlack && game.black.result === 'checkmated')) {
+          result = 'Loss';
+        } else if (game.white.result === 'agreed' || game.black.result === 'agreed' || game.white.result === 'repetition' || game.black.result === 'repetition') {
+          result = 'Draw';
+        } else {
+          result = 'Draw';
+        }
+        date = game.end_time ? new Date(game.end_time * 1000).toISOString().split('T')[0] : '';
+      } else if (game.opponent) { // lichess
+        opponent = game.opponent.username;
+        if (game.winner === user?.lichessUsername) {
+          result = 'Win';
+        } else if (game.winner) {
+          result = 'Loss';
+        } else {
+          result = 'Draw';
+        }
+        date = game.createdAt ? new Date(game.createdAt).toISOString().split('T')[0] : '';
+      }
+      return { opponent, result, date, rating: ratingChange };
+    });
+  } else {
+    matchHistory = [
+      { opponent: "Alex Chen", result: "Win", date: "2024-01-15", rating: "+12" },
+      { opponent: "Sarah Kumar", result: "Loss", date: "2024-01-14", rating: "-8" },
+      { opponent: "Diego Martinez", result: "Win", date: "2024-01-13", rating: "+15" }
+    ];
+  }
 
   const handleSave = () => {
         // Validate that at least one chess platform username is provided
@@ -92,6 +170,9 @@ const Profile = () => {
     return null;
   }
 
+  // Only allow editing if viewing own profile
+  const canEdit = !username || user?.username === username;
+
   return (
     <div className="bg-[#141414] text-white min-h-screen">
       <Header 
@@ -121,6 +202,7 @@ const Profile = () => {
               variant="outline"
               size="sm"
               className="border-gray-600 text-gray-300 hover:bg-gray-700"
+              disabled={!canEdit}
             >
               <Edit2 size={16} className="mr-1" />
               {isEditing ? 'Cancel' : 'Edit'}
@@ -132,7 +214,7 @@ const Profile = () => {
             <div className="text-sm text-gray-400">Current Rating</div>
           </div>
 
-          {isEditing ? (
+          {isEditing && canEdit ? (
             <div className="space-y-4">
               <div>
                 <Label htmlFor="name">Full Name</Label>

@@ -75,6 +75,38 @@ const Register = () => {
     }
   }, [formData.lichessUsername]);
 
+  // Utility to fetch chess.com data
+  async function fetchChessComProfile(username: string) {
+    const profileRes = await fetch(`https://api.chess.com/pub/player/${username}`);
+    const profile = await profileRes.json();
+    const statsRes = await fetch(`https://api.chess.com/pub/player/${username}/stats`);
+    const stats = await statsRes.json();
+    const archivesRes = await fetch(`https://api.chess.com/pub/player/${username}/games/archives`);
+    const archives = await archivesRes.json();
+    let games: any[] = [];
+    if (archives.archives && archives.archives.length > 0) {
+      const latestArchiveUrl = archives.archives[archives.archives.length - 1];
+      const gamesRes = await fetch(latestArchiveUrl);
+      const gamesData = await gamesRes.json();
+      games = gamesData.games || [];
+    }
+    return { profile, stats, games };
+  }
+
+  // Utility to fetch lichess.org data
+  async function fetchLichessProfile(username: string) {
+    const profileRes = await fetch(`https://lichess.org/api/user/${username}`);
+    const profile = await profileRes.json();
+    // Lichess stats are in the profile object
+    // Fetch recent games (max 5)
+    const gamesRes = await fetch(`https://lichess.org/api/games/user/${username}?max=5`, {
+      headers: { 'Accept': 'application/x-ndjson' }
+    });
+    const gamesText = await gamesRes.text();
+    const games = gamesText.trim().split('\n').map(line => JSON.parse(line));
+    return { profile, stats: profile.perfs, games };
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -114,26 +146,32 @@ const Register = () => {
     setIsLoading(true);
 
     try {
-      const response = await fetch('http://localhost:3000/api/auth/register', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          email: formData.email,
-          password: formData.password,
-          username: formData.username,
-          phone: formData.phone,
-          name: formData.username,
-          chessComUsername: formData.chessComUsername || undefined,
-          lichessUsername: formData.lichessUsername || undefined,
-          preferredPlatform: formData.preferredPlatform
-        }),
+      const signupSuccess = await signup({
+        email: formData.email,
+        password: formData.password,
+        username: formData.username,
+        phone: formData.phone,
+        name: formData.username,
+        chessComUsername: formData.chessComUsername || undefined,
+        lichessUsername: formData.lichessUsername || undefined,
+        preferredPlatform: formData.preferredPlatform
       });
-
-      const data = await response.json();
-
-      if (data.success) {
+      if (signupSuccess) {
+        // Fetch chess data after signup
+        let chessData = null;
+        if (formData.preferredPlatform === 'chess.com' && formData.chessComUsername) {
+          chessData = await fetchChessComProfile(formData.chessComUsername);
+        } else if (formData.preferredPlatform === 'lichess.org' && formData.lichessUsername) {
+          chessData = await fetchLichessProfile(formData.lichessUsername);
+        }
+        // Store chess data in user profile (localStorage)
+        if (chessData) {
+          const user = JSON.parse(localStorage.getItem('chess_user') || '{}');
+          user.chessProfile = chessData.profile;
+          user.chessStats = chessData.stats;
+          user.chessGames = chessData.games;
+          localStorage.setItem('chess_user', JSON.stringify(user));
+        }
         toast({
           title: "Welcome to chequemate!",
           description: "Your account has been created successfully.",
@@ -142,7 +180,7 @@ const Register = () => {
       } else {
         toast({
           title: "Registration failed",
-          description: data.message || "Unable to create account. Please try again.",
+          description: "Unable to create account. Please try again.",
           variant: "destructive",
         });
       }
@@ -332,4 +370,3 @@ const Register = () => {
 };
 
 export default Register;
-  

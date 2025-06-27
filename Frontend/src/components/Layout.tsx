@@ -1,19 +1,14 @@
-import React from "react";
+import React, { useContext } from "react";
 import { Outlet, useLocation, Link } from "react-router-dom";
 import { Users, MessageSquare, User } from "lucide-react";
+import { RequestsCountContext } from "../pages/Requests";
+import ChallengeModal from "./ChallengeModal";
 
 const Layout = () => {
   const location = useLocation();
-
-  // Mock data for request counts - in real app this would come from context/state
-  const incomingRequestsCount = 2;
-  const outgoingRequestsCount = 1;
-  const totalRequestsCount = incomingRequestsCount + outgoingRequestsCount;
-
-  // Don't show notification badge when on requests page
+  const { incomingRequestsCount } = useContext(RequestsCountContext);
   const showNotificationBadge =
-    location.pathname !== "/requests" && totalRequestsCount > 0;
-
+    location.pathname !== "/requests" && incomingRequestsCount > 0;
   const navItems = [
     { path: "/play", icon: Users, label: "Play" },
     { path: "/requests", icon: MessageSquare, label: "Requests" },
@@ -24,6 +19,7 @@ const Layout = () => {
     <div className="min-h-screen bg-[#141414] text-white flex flex-col font-sans">
       <main className="flex-1 pb-20">
         <Outlet />
+        <ChallengeModal />
       </main>
 
       {/* Bottom Navigation */}
@@ -44,11 +40,11 @@ const Layout = () => {
                 {/* Notification badge for requests positioned at top right of icon */}
                 {path === "/requests" && showNotificationBadge && (
                   <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center font-bold">
-                    {totalRequestsCount}
+                    {incomingRequestsCount}
                   </span>
                 )}
               </div>
-              <span className="text-xs mt-1 font-medium">{label}</span>
+              <span className="text-xs mt-1">{label}</span>
             </Link>
           ))}
         </div>
