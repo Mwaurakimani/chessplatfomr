@@ -11,8 +11,8 @@ const { Pool } = pg;
 
 const pool = new Pool({
     database: "chequemate",
-    user: "avnadmin",
-    password: "AVNS_KY97oCF7I1z8WXQ6_gm",
+    user: process.env.DB_USERNAME,
+    password: process.env.DB_PASSWORD,
     host: "chequemate-service-chequemate-db.g.aivencloud.com",
     port: 20381,
     ssl: {
@@ -22,4 +22,4 @@ const pool = new Pool({
     }
 });
 
-export default pool; 
+export default pool;
