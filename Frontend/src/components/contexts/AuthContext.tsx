@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { io, Socket } from 'socket.io-client';
 
 interface User {
   id: string;
@@ -31,6 +32,8 @@ interface AuthContextType {
   logout: () => void;
   isAuthenticated: boolean;
   updateProfile: (userData: Partial<User>) => void;
+  onlineUsers: User[];
+  socketRef: React.RefObject<Socket | null>; // Expose socketRef type
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -45,6 +48,8 @@ export const useAuth = () => {
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
+  const [onlineUsers, setOnlineUsers] = useState<User[]>([]);
+  const socketRef = React.useRef<Socket | null>(null);
 
   useEffect(() => {
     // Check for stored user data on app load
@@ -53,6 +58,35 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setUser(JSON.parse(storedUser));
     }
   }, []);
+
+  useEffect(() => {
+    if (!user) return;
+    if (socketRef.current) return; // Prevent multiple connections
+    const socket = io('http://localhost:3000', { transports: ['websocket'] });
+    socketRef.current = socket;
+    // Emit user-online event with user info
+    socket.emit('user-online', {
+      id: user.id,
+      name: user.name,
+      rating: user.rating,
+      avatar: user.name.split(' ').map(n => n[0]).join(''),
+      country: user.country,
+      rank: user.rank,
+      platform: user.preferredPlatform,
+      platformUsername: user.chessComUsername || user.lichessUsername || user.username,
+      chessComUsername: user.chessComUsername,
+      lichessUsername: user.lichessUsername
+    });
+    // Listen for online-users updates
+    socket.on('online-users', (users) => {
+      setOnlineUsers(users);
+    });
+    // Cleanup on unmount or logout
+    return () => {
+      socket.disconnect();
+      socketRef.current = null;
+    };
+  }, [user]);
 
   const login = async (email: string, password: string): Promise<boolean> => {
     try {
@@ -164,7 +198,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     signup,
     logout,
     isAuthenticated: !!user,
-    updateProfile
+    updateProfile,
+    onlineUsers,
+    socketRef // expose socketRef for real-time events
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
