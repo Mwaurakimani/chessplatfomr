@@ -158,10 +158,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         preferredPlatform: userData.preferredPlatform
       };
 
-      // Store user in localStorage (temporary storage)
-      const storedUsers = JSON.parse(localStorage.getItem('chess_users') || '[]');
-      storedUsers.push({ ...newUser, password: userData.password });
-      localStorage.setItem('chess_users', JSON.stringify(storedUsers));
+      const response = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(userData),
+      });
+
+      if (!response.ok) {
+        throw new Error('Registration failed');
+      }
+
+      await response.json();
+      window.location.href = '/login'; // Redirect to login after successful signup
+
+      // console.log(resp)
 
       setUser(newUser);
       localStorage.setItem('chess_user', JSON.stringify(newUser));

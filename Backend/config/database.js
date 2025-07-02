@@ -1,25 +1,23 @@
-import pg from 'pg';
-const { Pool } = pg;
+import 'dotenv/config';
+import mysql from 'mysql2/promise'; // Use the promise-based API for async/await
 
-// const pool = new Pool({
-//     database: "chequemate",
-//     user: "aerissat",
-//     password: "root",
-//     host: "localhost",
-//     port: 5432
-// });
+const {
+    DB_HOST,
+    DB_USERNAME,
+    DB_PASSWORD,
+    DB_NAME,
+    DB_PORT
+} = process.env;
 
-const pool = new Pool({
-    database: "chequemate",
-    user: process.env.DB_USERNAME,
-    password: process.env.DB_PASSWORD,
-    host: "chequemate-service-chequemate-db.g.aivencloud.com",
-    port: 20381,
-    ssl: {
-        rejectUnauthorized: false,  
-        // OR, for full validation, download the “CA certificate” from Aiven and do:
-        // ca: fs.readFileSync(path.resolve(__dirname, 'aiven-ca.pem')).toString()
-    }
+const pool = mysql.createPool({
+    host: DB_HOST,
+    user: DB_USERNAME,
+    password: DB_PASSWORD,
+    database: DB_NAME,
+    port: Number(DB_PORT),
+    waitForConnections: true,
+    connectionLimit: 10,
+    queueLimit: 0
 });
 
 export default pool;
