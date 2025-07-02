@@ -131,6 +131,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  // Signup function to register a new user
+
   const signup = async (userData: {
     email: string;
     password: string;
