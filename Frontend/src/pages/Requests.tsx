@@ -1,398 +1,552 @@
-import React, { useState, useEffect, createContext, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import Header from '@/components/Header';
 import { Clock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/components/contexts/AuthContext';
+import { useRequests } from '@/components/contexts/RequestsContext';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { useToast } from '@/hooks/use-toast';
+import { CountdownModal } from '@/components/CountdownModal';
+import { getTimeClass } from '@/lib/timeUtils';
 
-export const RequestsCountContext = createContext<{ incomingRequestsCount: number }>({ incomingRequestsCount: 0 });
-
-const REQUESTS_STORAGE_KEY = 'chess_requests';
+const REQUESTS_STORAGE_KEY = 'chess-requests';
 
 const Requests = () => {
   const { user, socketRef } = useAuth();
+  const { refreshRequestsCount } = useRequests();
+  const { toast } = useToast();
   const [activeTab, setActiveTab] = useState('incoming');
   const [incomingRequests, setIncomingRequests] = useState<any[]>([]);
   const [outgoingRequests, setOutgoingRequests] = useState<any[]>([]);
+  const [postponedRequests, setPostponedRequests] = useState<any[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [showStartModal, setShowStartModal] = useState(false);
-  const [pendingGame, setPendingGame] = useState<any>(null);
-  const incomingIds = useRef<Set<string>>(new Set());
-  const outgoingIds = useRef<Set<string>>(new Set());
+  const [showCountdownModal, setShowCountdownModal] = useState(false);
+  const [activeChallenge, setActiveChallenge] = useState<any>(null);
+  const [isUserChallenger, setIsUserChallenger] = useState(false);
 
-  // Load requests from localStorage on mount
   useEffect(() => {
     if (!user) return;
-    setLoading(true);
-    const stored = JSON.parse(localStorage.getItem(REQUESTS_STORAGE_KEY) || '{}');
-    const incoming = stored[user.id]?.incoming || [];
-    const outgoing = stored[user.id]?.outgoing || [];
-    setIncomingRequests(incoming);
-    setOutgoingRequests(outgoing);
-    incomingIds.current = new Set(incoming.map((r: any) => r.id?.toString() || ''));
-    outgoingIds.current = new Set(outgoing.map((r: any) => r.id?.toString() || ''));
-    setLoading(false);
+
+    const fetchChallenges = async () => {
+      try {
+        const res = await fetch(`/api/challenges/${user.id}`);
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          const incoming = data.filter((c: any) => String(c.opponent.id) === String(user.id) && c.status === 'pending');
+          const outgoing = data.filter((c: any) => String(c.challenger.id) === String(user.id) && c.status === 'pending');
+          const postponed = data.filter((c: any) => c.status === 'postponed');
+          setIncomingRequests(incoming);
+          setOutgoingRequests(outgoing);
+          setPostponedRequests(postponed);
+          
+          // Refresh the global requests count
+          refreshRequestsCount();
+        } else {
+          setError('Failed to fetch challenges');
+        }
+      } catch (err) {
+        setError('Failed to fetch challenges');
+      }
+      setLoading(false);
+    };
+
+    fetchChallenges();
   }, [user]);
 
-  // Save requests to localStorage whenever they change
   useEffect(() => {
-    if (!user) return;
-    const stored = JSON.parse(localStorage.getItem(REQUESTS_STORAGE_KEY) || '{}');
-    stored[user.id] = {
-      incoming: incomingRequests,
-      outgoing: outgoingRequests,
-    };
-    localStorage.setItem(REQUESTS_STORAGE_KEY, JSON.stringify(stored));
-  }, [incomingRequests, outgoingRequests, user]);
+    if (!socketRef?.current) return;
 
-  useEffect(() => {
-    if (!user || !socketRef?.current) return;
     const socket = socketRef.current;
-    const handleChallengeReceived = (data: any) => {
-      // Use a unique id (timestamp + from.id)
-      const reqId = `${data.timestamp}_${data.from.id}`;
-      if (!incomingIds.current.has(reqId)) {
-        setIncomingRequests((prev) => {
-          const newReq = {
-            id: reqId,
-            player: data.from.name,
-            userId: data.from.id,
-            rating: data.from.rating || 1200,
-            avatar: data.from.name.split(' ').map((n: string) => n[0]).join(''),
-            country: data.from.country || '',
-            timestamp: new Date(data.timestamp).toLocaleTimeString(),
-            platform: data.from.platform || 'chess.com',
-            timeControl: '10+0',
-          };
-          incomingIds.current.add(reqId);
-          return [newReq, ...prev];
+
+    const handleNewChallenge = (challenge: any) => {
+      if (String(challenge.opponent.id) === String(user?.id)) {
+        setIncomingRequests((prev) => [challenge, ...prev]);
+        // Refresh the global requests count
+        refreshRequestsCount();
+        toast({
+          title: 'New Challenge',
+          description: `You have a new challenge from ${challenge.challenger.username}!`,
         });
       }
-      // Only show toast, do not navigate
-      import('@/hooks/use-toast').then(({ useToast }) => {
-        useToast().toast({
-          title: 'Challenge Received',
-          description: `You were challenged by ${data.from.name}`,
-        });
-      });
     };
-    const handleChallengeSent = (data: any) => {
-      const reqId = `${data.timestamp}_${data.to.id}`;
-      if (!outgoingIds.current.has(reqId)) {
-        setOutgoingRequests((prev) => {
-          const newReq = {
-            id: reqId,
-            player: data.to.name,
-            userId: data.to.id,
-            rating: data.to.rating || 1200,
-            avatar: data.to.name.split(' ').map((n: string) => n[0]).join(''),
-            country: data.to.country || '',
-            timestamp: new Date(data.timestamp).toLocaleTimeString(),
-            platform: data.to.platform || 'chess.com',
-            timeControl: '10+0',
-          };
-          outgoingIds.current.add(reqId);
-          return [newReq, ...prev];
-        });
+
+    const handleChallengeSent = (challenge: any) => {
+      if (String(challenge.challenger.id) === String(user?.id)) {
+        setOutgoingRequests((prev) => [challenge, ...prev]);
       }
-      // Only show toast, do not navigate
-      import('@/hooks/use-toast').then(({ useToast }) => {
-        useToast().toast({
-          title: 'Challenge Sent',
-          description: `You challenged ${data.to.name}`,
-        });
-      });
     };
-    const handleChallengesUpdate = (challenges: any[]) => {
-      // Filter for this user
-      const incoming = challenges.filter(c => c.to.id === user.id).map(c => ({
-        id: `${c.timestamp}_${c.from.id}`,
-        player: c.from.name,
-        userId: c.from.id,
-        rating: c.from.rating || 1200,
-        avatar: c.from.name.split(' ').map((n: string) => n[0]).join(''),
-        country: c.from.country || '',
-        timestamp: new Date(c.timestamp).toLocaleTimeString(),
-        platform: c.from.platform || 'chess.com',
-        timeControl: '10+0',
-      }));
-      const outgoing = challenges.filter(c => c.from.id === user.id).map(c => ({
-        id: `${c.timestamp}_${c.to.id}`,
-        player: c.to.name,
-        userId: c.to.id,
-        rating: c.to.rating || 1200,
-        avatar: c.to.name.split(' ').map((n: string) => n[0]).join(''),
-        country: c.to.country || '',
-        timestamp: new Date(c.timestamp).toLocaleTimeString(),
-        platform: c.to.platform || 'chess.com',
-        timeControl: '10+0',
-      }));
-      incomingIds.current = new Set(incoming.map((r: any) => r.id));
-      outgoingIds.current = new Set(outgoing.map((r: any) => r.id));
-      setIncomingRequests(incoming);
-      setOutgoingRequests(outgoing);
-    };
-    socket.on('challenge-received', handleChallengeReceived);
-    socket.on('challenge-sent', handleChallengeSent);
-    socket.on('challenges-update', handleChallengesUpdate);
+
+    socket.on('newChallenge', handleNewChallenge);
+    socket.on('challengeSent', handleChallengeSent);
+
     return () => {
-      socket.off('challenge-received', handleChallengeReceived);
-      socket.off('challenge-sent', handleChallengeSent);
-      socket.off('challenges-update', handleChallengesUpdate);
+      socket.off('newChallenge', handleNewChallenge);
+      socket.off('challengeSent', handleChallengeSent);
     };
-  }, [user, socketRef]);
+  }, [socketRef, user, toast]);
 
-  const handleChallenge = (playerId: number) => {
-    // This will later link to chess.com or game interface
-    console.log(`Starting game with player ${playerId}`);
-  };
-
-  const handleAccept = (requestId: string) => {
-    const req = incomingRequests.find((r) => r.id === requestId);
-    setIncomingRequests((prev) => prev.filter((req) => req.id !== requestId));
-    if (user && req) {
-      const stored = JSON.parse(localStorage.getItem(REQUESTS_STORAGE_KEY) || '{}');
-      stored[user.id] = {
-        incoming: incomingRequests.filter((r) => r.id !== requestId),
-        outgoing: outgoingRequests,
-      };
-      localStorage.setItem(REQUESTS_STORAGE_KEY, JSON.stringify(stored));
-      // Emit accept event to backend
-      if (socketRef?.current) {
-        socketRef.current.emit('challenge-accept', {
-          from: { id: req.userId, name: req.player },
-          to: { id: user.id, name: user.name },
-          timestamp: requestId.split('_')[0],
-          platform: req.platform
-        });
-      }
-    }
-    import('@/hooks/use-toast').then(({ useToast }) => {
-      useToast().toast({
-        title: 'Challenge Accepted',
-        description: 'You accepted the challenge.',
-      });
-    });
-  };
-
-  const handleDecline = (requestId: string) => {
-    const req = incomingRequests.find((r) => r.id === requestId);
-    setIncomingRequests((prev) => prev.filter((req) => req.id !== requestId));
-    if (user && req) {
-      const stored = JSON.parse(localStorage.getItem(REQUESTS_STORAGE_KEY) || '{}');
-      stored[user.id] = {
-        incoming: incomingRequests.filter((r) => r.id !== requestId),
-        outgoing: outgoingRequests,
-      };
-      localStorage.setItem(REQUESTS_STORAGE_KEY, JSON.stringify(stored));
-      // Emit decline event to backend
-      if (socketRef?.current) {
-        socketRef.current.emit('challenge-decline', {
-          from: { id: req.userId, name: req.player },
-          to: { id: user.id, name: user.name },
-          timestamp: requestId.split('_')[0],
-        });
-      }
-    }
-    import('@/hooks/use-toast').then(({ useToast }) => {
-      useToast().toast({
-        title: 'Challenge Declined',
-        description: 'You declined the challenge.',
-      });
-    });
-  };
-
-  // Listen for challenge-accepted and challenge-declined events
-  useEffect(() => {
-    if (!user || !socketRef?.current) return;
-    const socket = socketRef.current;
-    const handleAccepted = (data: any) => {
-      // Remove outgoing request for this challenge
-      setOutgoingRequests((prev) => prev.filter((r) => r.id !== `${data.timestamp}_${data.to.id}`));
-      // Show modal to challenger
-      setPendingGame(data);
-      setShowStartModal(true);
-    };
-    const handleDeclined = (data: any) => {
-      setOutgoingRequests((prev) => prev.filter((r) => r.id !== `${data.timestamp}_${data.to.id}`));
-      import('@/hooks/use-toast').then(({ useToast }) => {
-        useToast().toast({
-          title: 'Challenge Declined',
-          description: 'Your challenge was declined.',
-        });
-      });
-    };
-    socket.on('challenge-accepted', handleAccepted);
-    socket.on('challenge-declined', handleDeclined);
-    return () => {
-      socket.off('challenge-accepted', handleAccepted);
-      socket.off('challenge-declined', handleDeclined);
-    };
-  }, [user, socketRef]);
-
-  const getPlatformIcon = (platform: string) => {
-    return platform === 'chess.com' ? '♘' : '♞';
-  };
-
-  const getPlatformDisplayName = (platform: string) => {
-    return platform === 'chess.com' ? 'Chess.com' : 'Lichess.org';
-  };
-
-  const RequestCard = ({ request, isIncoming = false }: { request: any, isIncoming?: boolean }) => (
-    <div className="bg-[#1a1a1a] rounded-lg p-4 mb-3">
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center space-x-3">
-          <div className="w-10 h-10 bg-gray-700 rounded-full flex items-center justify-center text-sm font-semibold">
-            {request.avatar}
-          </div>
-          <div>
-            <div className="flex items-center space-x-2">
-              <h3 className="font-semibold">{request.player}</h3>
-              <span>{request.country}</span>
-            </div>
-            <div className="flex items-center space-x-2 text-sm text-gray-400">
-              <span>{request.rating}</span>
-              <Clock size={12} />
-              <span>{request.timeControl}</span>
-              <span className="text-gray-500">•</span>
-              <div className="flex items-center space-x-1">
-                <span className="text-sm">{getPlatformIcon(request.platform)}</span>
-                <span className="text-sm">{getPlatformDisplayName(request.platform)}</span>
-              </div>
-            </div>
-          </div>
-        </div>
-        <span className="text-xs text-gray-500">{request.timestamp}</span>
-      </div>
-      
-      {isIncoming ? (
-        <div className="flex space-x-2">
-          <Button 
-            onClick={() => handleAccept(request.id)}
-            className="flex-1 bg-green-600 hover:bg-green-700"
-            size="sm"
-          >
-            Accept
-          </Button>
-          <Button 
-            onClick={() => handleDecline(request.id)}
-            variant="outline"
-            className="flex-1 border-gray-600 text-gray-300 hover:bg-gray-700"
-            size="sm"
-          >
-            Decline
-          </Button>
-        </div>
-      ) : (
-        <div className="flex items-center justify-between">
-          <span className="text-sm text-yellow-400 flex items-center">
-            <Clock size={12} className="mr-1" />
-            Waiting for response...
-          </span>
-          <Button 
-            variant="outline"
-            size="sm"
-            className="border-gray-600 text-gray-300 hover:bg-gray-700"
-          >
-            Cancel
-          </Button>
-        </div>
-      )}
-    </div>
-  );
-
+  // Early returns for error and loading states
   if (error) {
     return (
-      <div className="bg-[#141414] text-white min-h-screen flex flex-col items-center justify-center">
+      <div className="chess-background bg-background text-foreground min-h-screen flex flex-col items-center justify-center">
         <Header title="Game Requests" />
-        <div className="text-red-400 font-bold text-lg">{error}</div>
-      </div>
-    );
-  }
-  if (loading) {
-    return (
-      <div className="bg-[#141414] text-white min-h-screen flex flex-col items-center justify-center">
-        <Header title="Game Requests" />
-        <div className="text-gray-400">Loading...</div>
+        <div className="text-destructive font-bold text-lg">{error}</div>
       </div>
     );
   }
 
-  // Provide the count to context consumers
-  return (
-    <RequestsCountContext.Provider value={{ incomingRequestsCount: incomingRequests.length }}>
-      <div className="bg-[#141414] text-white min-h-screen">
+  if (loading) {
+    return (
+      <div className="chess-background bg-background text-foreground min-h-screen flex flex-col items-center justify-center">
         <Header title="Game Requests" />
-        <div className="p-4">
+        <div className="font-bold text-lg">Loading...</div>
+      </div>
+    );
+  }
+
+  const handleGoNow = () => {
+    // Navigate to the game page with challenge details
+    if (activeChallenge) {
+      setShowCountdownModal(false);
+      
+      const platform = activeChallenge.platform;
+      const timeControl = activeChallenge.time_control;
+      const opponent = isUserChallenger ? activeChallenge.opponent.username : activeChallenge.challenger.username;
+      
+      // Use the same logic as startMatch3.html for proper opponent pre-loading
+      if (platform === 'chess.com') {
+        // Use the proper chess.com challenge URL that pre-loads the opponent
+        const gameUrl = `https://www.chess.com/play/online/new?opponent=${opponent.toLowerCase()}`;
+        window.open(gameUrl, '_blank');
+        
+        // Show instructions
+        toast({
+          title: 'Game Starting!',
+          description: `Opening chess.com with ${opponent} pre-loaded. Set time control to ${timeControl} and start the game!`,
+          duration: 15000,
+        });
+      } else if (platform === 'lichess.org') {
+        // For lichess, use the direct challenge URL with opponent pre-loaded
+        const gameUrl = `https://lichess.org/?user=${opponent.toLowerCase()}#friend`;
+        window.open(gameUrl, '_blank');
+        
+        toast({
+          title: 'Game Starting!',
+          description: `Opening lichess with ${opponent} pre-loaded. Send a ${timeControl} challenge!`,
+          duration: 15000,
+        });
+      } else {
+        // Fallback to platform homepage
+        const correctedPlatform = platform.replace('.com', '');
+        window.open(`https://www.${correctedPlatform}.com`, '_blank');
+      }
+    }
+  };
+
+  const handlePostpone = async () => {
+    if (activeChallenge) {
+      try {
+        const response = await fetch(`/api/challenges/${activeChallenge.id}/postpone`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+        });
+
+        if (response.ok) {
+          setShowCountdownModal(false);
+          setActiveChallenge(null);
+          // Refresh requests to update the lists
+          refreshRequestsCount();
+          toast({
+            title: 'Challenge Postponed',
+            description: 'The challenge has been postponed and moved to your postponed list.',
+          });
+        } else {
+          toast({
+            title: 'Error',
+            description: 'Failed to postpone challenge',
+            variant: 'destructive',
+          });
+        }
+      } catch (error) {
+        toast({
+          title: 'Error',
+          description: 'Failed to postpone challenge',
+          variant: 'destructive',
+        });
+      }
+    }
+  };
+
+  const handleAcceptChallenge = async (challengeId: string, isChallenger: boolean = false) => {
+    try {
+      const response = await fetch(`/api/challenges/${challengeId}/accept`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setActiveChallenge(data.challenge);
+        setIsUserChallenger(isChallenger);
+        setShowCountdownModal(true);
+        
+        // Remove from incoming requests
+        setIncomingRequests(prev => prev.filter(req => req.id !== challengeId));
+        
+        // Refresh the global requests count
+        refreshRequestsCount();
+      } else {
+        toast({
+          title: 'Error',
+          description: 'Failed to accept challenge',
+          variant: 'destructive',
+        });
+      }
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'Failed to accept challenge',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const handleDeclineChallenge = async (challengeId: string) => {
+    try {
+      const response = await fetch(`/api/challenges/${challengeId}/decline`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+
+      if (response.ok) {
+        // Remove from incoming requests
+        setIncomingRequests(prev => prev.filter(req => req.id !== challengeId));
+        
+        // Refresh the global requests count
+        refreshRequestsCount();
+        
+        toast({
+          title: 'Challenge Declined',
+          description: 'Challenge has been declined',
+        });
+      } else {
+        toast({
+          title: 'Error',
+          description: 'Failed to decline challenge',
+          variant: 'destructive',
+        });
+      }
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'Failed to decline challenge',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const handleCancelChallenge = async (challengeId: string) => {
+    try {
+      const response = await fetch(`/api/challenges/${challengeId}/cancel`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+
+      if (response.ok) {
+        // Remove from outgoing requests
+        setOutgoingRequests(prev => prev.filter(req => req.id !== challengeId));
+        
+        toast({
+          title: 'Challenge Cancelled',
+          description: 'Challenge has been cancelled',
+        });
+      } else {
+        toast({
+          title: 'Error',
+          description: 'Failed to cancel challenge',
+          variant: 'destructive',
+        });
+      }
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'Failed to cancel challenge',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const handleDeleteChallenge = async (challengeId: string) => {
+    try {
+      const response = await fetch(`/api/challenges/${challengeId}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+      });
+
+      if (response.ok) {
+        // Remove from postponed requests
+        setPostponedRequests(prev => prev.filter(req => req.id !== challengeId));
+        
+        toast({
+          title: 'Challenge Deleted',
+          description: 'Challenge has been deleted',
+        });
+      } else {
+        toast({
+          title: 'Error',
+          description: 'Failed to delete challenge',
+          variant: 'destructive',
+        });
+      }
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'Failed to delete challenge',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const handlePostponeChallenge = async (challengeId: string) => {
+    try {
+      const response = await fetch(`/api/challenges/${challengeId}/postpone`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        // Move from incoming to postponed
+        const challenge = incomingRequests.find(req => req.id === challengeId);
+        if (challenge) {
+          setIncomingRequests(prev => prev.filter(req => req.id !== challengeId));
+          setPostponedRequests(prev => [{ ...challenge, status: 'postponed' }, ...prev]);
+        }
+        
+        // Refresh the global requests count
+        refreshRequestsCount();
+        
+        toast({
+          title: 'Challenge Postponed',
+          description: 'Challenge has been postponed',
+        });
+      } else {
+        toast({
+          title: 'Error',
+          description: 'Failed to postpone challenge',
+          variant: 'destructive',
+        });
+      }
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'Failed to postpone challenge',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const formatTime = (timeString: string) => {
+    const date = new Date(timeString);
+    return date.toLocaleString();
+  };
+
+  const RequestCard: React.FC<{
+    challenge: any;
+    type: 'incoming' | 'outgoing' | 'postponed';
+  }> = ({ challenge, type }) => {
+    const isIncoming = type === 'incoming';
+    const isOutgoing = type === 'outgoing';
+    const isPostponed = type === 'postponed';
+
+    const opponentInfo = isIncoming ? challenge.challenger : challenge.opponent;
+    const challengerInfo = challenge.challenger;
+
+    return (
+      <div className="bg-card text-card-foreground border rounded-lg p-4 mb-4 shadow-sm">
+        <div className="flex justify-between items-start mb-2">
+          <div>
+            <h3 className="font-semibold text-lg">
+              {isIncoming ? `Challenge from ${opponentInfo?.username || 'Unknown'}` :
+               isOutgoing ? `Challenge to ${opponentInfo?.username || 'Unknown'}` :
+               `Postponed challenge with ${opponentInfo?.username || 'Unknown'}`}
+            </h3>
+            <p className="text-sm text-muted-foreground">
+              Game Type: {challenge.game_type || 'Standard'} • 
+              Duration: {challenge.duration || 'Not specified'} • 
+              Rating: {challenge.rating_range || 'Open'}
+            </p>
+            <p className="text-xs text-muted-foreground mt-1">
+              <Clock className="inline w-3 h-3 mr-1" />
+              {formatTime(challenge.created_at)}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex gap-2 flex-wrap">
+          {isIncoming && (
+            <>
+              <Button
+                onClick={() => handleAcceptChallenge(challenge.id)}
+                className="bg-green-600 hover:bg-green-700 text-white"
+                size="sm"
+              >
+                Accept
+              </Button>
+              <Button
+                onClick={() => handleDeclineChallenge(challenge.id)}
+                variant="outline"
+                className="bg-red-600 hover:bg-red-700 text-white border-red-600"
+                size="sm"
+              >
+                Decline
+              </Button>
+              <Button
+                onClick={() => handlePostponeChallenge(challenge.id)}
+                variant="outline"
+                size="sm"
+              >
+                Postpone
+              </Button>
+            </>
+          )}
+
+          {isOutgoing && (
+            <Button
+              onClick={() => handleCancelChallenge(challenge.id)}
+              variant="outline"
+              className="bg-red-600 hover:bg-red-700 text-white border-red-600"
+              size="sm"
+            >
+              Cancel
+            </Button>
+          )}
+
+          {isPostponed && (
+            <>
+              <Button
+                onClick={() => handleAcceptChallenge(challenge.id, String(challengerInfo?.id) === String(user?.id))}
+                className="bg-green-600 hover:bg-green-700 text-white"
+                size="sm"
+              >
+                Resume
+              </Button>
+              <Button
+                onClick={() => handleDeleteChallenge(challenge.id)}
+                variant="outline"
+                className="bg-red-600 hover:bg-red-700 text-white border-red-600"
+                size="sm"
+              >
+                Delete
+              </Button>
+            </>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  const totalRequests = incomingRequests.length + outgoingRequests.length + postponedRequests.length;
+
+  return (
+    <div className="chess-background bg-background text-foreground min-h-screen">
+      <Header title="Game Requests" />
+      
+      <div className="container mx-auto p-4 max-w-4xl">
+        {totalRequests === 0 ? (
+          <div className="text-center py-8">
+            <p className="text-muted-foreground text-lg">No game requests at the moment.</p>
+            <p className="text-muted-foreground text-sm mt-2">
+              Visit the Play page to challenge other players!
+            </p>
+          </div>
+        ) : (
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className="grid w-full grid-cols-2 bg-[#1a1a1a]">
-              <TabsTrigger value="incoming" className="data-[state=active]:bg-gray-700 relative">
+            <TabsList className="grid w-full grid-cols-3">
+              <TabsTrigger value="incoming" className="relative">
                 Incoming
                 {incomingRequests.length > 0 && (
-                  <span className="ml-2 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center font-bold">
+                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
                     {incomingRequests.length}
                   </span>
                 )}
               </TabsTrigger>
-              <TabsTrigger value="outgoing" className="data-[state=active]:bg-gray-700 relative">
+              <TabsTrigger value="outgoing" className="relative">
                 Outgoing
                 {outgoingRequests.length > 0 && (
-                  <span className="ml-2 bg-blue-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center font-bold">
+                  <span className="absolute -top-1 -right-1 bg-blue-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
                     {outgoingRequests.length}
                   </span>
                 )}
               </TabsTrigger>
+              <TabsTrigger value="postponed" className="relative">
+                Postponed
+                {postponedRequests.length > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-yellow-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
+                    {postponedRequests.length}
+                  </span>
+                )}
+              </TabsTrigger>
             </TabsList>
-            <TabsContent value="incoming">
+
+            <TabsContent value="incoming" className="mt-6">
               {incomingRequests.length === 0 ? (
-                <div className="text-center text-gray-400 mt-8">No incoming requests yet.</div>
+                <p className="text-muted-foreground text-center py-8">No incoming requests.</p>
               ) : (
-                incomingRequests.map((req) => (
-                  <RequestCard key={req.id} request={req} isIncoming />
+                incomingRequests.map((challenge) => (
+                  <RequestCard
+                    key={challenge.id}
+                    challenge={challenge}
+                    type="incoming"
+                  />
                 ))
               )}
             </TabsContent>
-            <TabsContent value="outgoing">
+
+            <TabsContent value="outgoing" className="mt-6">
               {outgoingRequests.length === 0 ? (
-                <div className="text-center text-gray-400 mt-8">No outgoing requests yet.</div>
+                <p className="text-muted-foreground text-center py-8">No outgoing requests.</p>
               ) : (
-                outgoingRequests.map((req) => (
-                  <RequestCard key={req.id} request={req} />
+                outgoingRequests.map((challenge) => (
+                  <RequestCard
+                    key={challenge.id}
+                    challenge={challenge}
+                    type="outgoing"
+                  />
+                ))
+              )}
+            </TabsContent>
+
+            <TabsContent value="postponed" className="mt-6">
+              {postponedRequests.length === 0 ? (
+                <p className="text-muted-foreground text-center py-8">No postponed requests.</p>
+              ) : (
+                postponedRequests.map((challenge) => (
+                  <RequestCard
+                    key={challenge.id}
+                    challenge={challenge}
+                    type="postponed"
+                  />
                 ))
               )}
             </TabsContent>
           </Tabs>
-        </div>
-        <Dialog open={showStartModal} onOpenChange={setShowStartModal}>
-          <DialogContent>
-            {pendingGame && (
-              <div className="space-y-4">
-                <h2 className="text-lg font-bold">Challenge Accepted!</h2>
-                <p>{pendingGame.to.name} accepted your challenge. Start the game?</p>
-                <div className="flex space-x-2">
-                  <Button className="bg-green-600 hover:bg-green-700 flex-1" onClick={() => {
-                    // Redirect to chess.com or lichess.org
-                    const platform = pendingGame.platform;
-                    const challenger = pendingGame.from.name;
-                    const challenged = pendingGame.to.name;
-                    if (platform === 'chess.com') {
-                      window.open(`https://www.chess.com/play/online/new?opponent=${challenged.toLowerCase()}`,'_blank');
-                    } else {
-                      window.open(`https://lichess.org/?user=${challenged.toLowerCase()}#friend`,'_blank');
-                    }
-                    setShowStartModal(false);
-                  }}>Start Game</Button>
-                  <Button className="bg-yellow-600 hover:bg-yellow-700 flex-1" onClick={() => setShowStartModal(false)}>Reschedule</Button>
-                  <Button className="bg-red-600 hover:bg-red-700 flex-1" onClick={() => setShowStartModal(false)}>Abort</Button>
-                </div>
-              </div>
-            )}
-          </DialogContent>
-        </Dialog>
+        )}
       </div>
-    </RequestsCountContext.Provider>
+
+      {showCountdownModal && (
+        <CountdownModal
+          isOpen={showCountdownModal}
+          onClose={() => setShowCountdownModal(false)}
+          challenge={activeChallenge}
+          onGoNow={handleGoNow}
+          onPostpone={handlePostpone}
+          isChallenger={isUserChallenger}
+        />
+      )}
+    </div>
   );
 };
 

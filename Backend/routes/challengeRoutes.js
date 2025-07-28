@@ -1,12 +1,22 @@
-import express from 'express'
-import { createMatch, validatePlayerController } from '../controllers/challengeController.js'
+import express from 'express';
+import { 
+  createMatch, 
+  getChallenges, 
+  acceptChallenge, 
+  declineChallenge, 
+  cancelChallenge, 
+  postponeChallenge, 
+  deleteChallenge 
+} from '../controllers/challengeController.js';
 
-const router = express.Router()
+const router = express.Router();
 
-// POST /api/match
-router.post('/', createMatch)
+router.post('/', createMatch);
+router.get('/:userId', getChallenges);
+router.post('/:challengeId/accept', acceptChallenge);
+router.post('/:challengeId/decline', declineChallenge);
+router.post('/:challengeId/cancel', cancelChallenge);
+router.post('/:challengeId/postpone', postponeChallenge);
+router.delete('/:challengeId', deleteChallenge);
 
-// POST /api/match/validate-player
-router.post('/validate-player', validatePlayerController)
-
-export default router
+export default router;

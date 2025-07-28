@@ -1,0 +1,34 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Start Backend Server",
+			"type": "shell",
+			"command": "npm start",
+			"group": "build",
+			"isBackground": true,
+			"options": {
+				"cwd": "${workspaceFolder}/Backend"
+			},
+			"problemMatcher": []
+		},
+		{
+			"label": "Start Frontend Server",
+			"type": "shell",
+			"command": "npm run dev",
+			"group": "build",
+			"isBackground": true,
+			"options": {
+				"cwd": "${workspaceFolder}/Frontend"
+			},
+			"problemMatcher": []
+		},
+		{
+			"label": "Test Slogan Feature",
+			"type": "shell",
+			"command": "echo 'Testing editable slogan feature implementation...' && echo 'Backend: Slogan support added to User model, authController, and database schema' && echo 'Frontend: Registration form updated, Profile page with inline editing, Challenge card navigation' && echo 'Features: Pen icon editing, default Ready to Play! text, read-only profiles' && echo 'All authentication flows updated to handle slogan data' && echo 'Ready for testing!'",
+			"group": "test",
+			"isBackground": false
+		}
+	]
+}

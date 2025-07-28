@@ -20,9 +20,20 @@ const ChallengeModal: React.FC = () => {
             {incomingChallenge.from.name} has challenged you to a match.
           </DialogDescription>
         </DialogHeader>
-        <DialogFooter>
-          <Button onClick={declineChallenge} variant="destructive">Decline</Button>
-          <Button onClick={acceptChallenge}>Accept</Button>
+        <DialogFooter className="gap-3">
+          <Button 
+            onClick={declineChallenge} 
+            variant="destructive"
+            className="finance-button-secondary border-red-200 hover:border-red-300 hover:bg-red-50 text-red-600"
+          >
+            Decline
+          </Button>
+          <Button 
+            onClick={acceptChallenge}
+            className="finance-button-primary bg-green-600 hover:bg-green-700 text-white border-0"
+          >
+            Accept Challenge
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

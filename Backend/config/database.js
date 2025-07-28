@@ -11,8 +11,8 @@ const { Pool } = pg;
 
 const pool = new Pool({
     database: "chequemate",
-    user: process.env.DB_USERNAME,
-    password: process.env.DB_PASSWORD,
+    user: "avnadmin",
+    password: "AVNS_KY97oCF7I1z8WXQ6_gm",
     host: "chequemate-service-chequemate-db.g.aivencloud.com",
     port: 20381,
     ssl: {

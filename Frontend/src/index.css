@@ -5,82 +5,95 @@
 
 @layer base {
   :root {
-    --background: 0 0% 8%; /* #141414 */
-    --foreground: 0 0% 100%; /* white */
+    /* Finance-inspired modern palette - Light Theme */
+    --background: 0 0% 100%; /* Pure white */
+    --foreground: 220 15% 15%; /* Deep slate */
 
-    --card: 0 0% 10%;
-    --card-foreground: 0 0% 100%;
+    --card: 0 0% 100%; /* White cards */
+    --card-foreground: 220 15% 15%;
 
-    --popover: 0 0% 10%;
-    --popover-foreground: 0 0% 100%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 220 15% 15%;
 
-    --primary: 0 0% 100%;
-    --primary-foreground: 0 0% 8%;
+    --primary: 158 64% 52%; /* Modern green */
+    --primary-foreground: 0 0% 100%;
 
-    --secondary: 0 0% 15%;
-    --secondary-foreground: 0 0% 100%;
+    --secondary: 220 14% 96%; /* Very light gray */
+    --secondary-foreground: 220 9% 32%;
 
-    --muted: 0 0% 15%;
-    --muted-foreground: 0 0% 70%;
+    --muted: 220 14% 95%; /* Light muted */
+    --muted-foreground: 220 9% 46%;
 
-    --accent: 0 0% 15%;
+    --accent: 158 64% 52%; /* Green accent */
     --accent-foreground: 0 0% 100%;
 
-    --destructive: 0 84.2% 60.2%;
+    --destructive: 0 84% 60%; /* Red */
     --destructive-foreground: 0 0% 100%;
 
-    --border: 0 0% 20%;
-    --input: 0 0% 20%;
-    --ring: 0 0% 60%;
+    --border: 220 13% 91%; /* Light borders */
+    --input: 220 13% 91%;
+    --ring: 158 64% 52%; /* Green focus ring */
 
-    --radius: 0.5rem;
+    --radius: 0.75rem;
 
-    --sidebar-background: 0 0% 8%;
-    --sidebar-foreground: 0 0% 100%;
-    --sidebar-primary: 0 0% 100%;
-    --sidebar-primary-foreground: 0 0% 8%;
-    --sidebar-accent: 0 0% 15%;
-    --sidebar-accent-foreground: 0 0% 100%;
-    --sidebar-border: 0 0% 20%;
-    --sidebar-ring: 0 0% 60%;
+    --sidebar-background: 0 0% 100%;
+    --sidebar-foreground: 220 15% 15%;
+    --sidebar-primary: 158 64% 52%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 220 14% 96%;
+    --sidebar-accent-foreground: 220 9% 32%;
+    --sidebar-border: 220 13% 91%;
+    --sidebar-ring: 158 64% 52%;
+
+    /* Finance status colors */
+    --success: 142 76% 36%;
+    --warning: 38 92% 50%;
+    --info: 199 89% 48%;
   }
 
   .dark {
-    --background: 0 0% 8%;
-    --foreground: 0 0% 100%;
+    /* Finance-inspired modern palette - Dark Theme */
+    --background: 220 20% 6%; /* Deep navy */
+    --foreground: 220 14% 95%; /* Light text */
 
-    --card: 0 0% 10%;
-    --card-foreground: 0 0% 100%;
+    --card: 220 15% 10%; /* Dark cards */
+    --card-foreground: 220 14% 95%;
 
-    --popover: 0 0% 10%;
-    --popover-foreground: 0 0% 100%;
+    --popover: 220 15% 10%;
+    --popover-foreground: 220 14% 95%;
 
-    --primary: 0 0% 100%;
-    --primary-foreground: 0 0% 8%;
+    --primary: 142 76% 36%; /* Darker green */
+    --primary-foreground: 220 20% 6%;
 
-    --secondary: 0 0% 15%;
-    --secondary-foreground: 0 0% 100%;
+    --secondary: 220 13% 15%; /* Dark secondary */
+    --secondary-foreground: 220 14% 85%;
 
-    --muted: 0 0% 15%;
-    --muted-foreground: 0 0% 70%;
+    --muted: 220 13% 15%; /* Dark muted */
+    --muted-foreground: 220 9% 60%;
 
-    --accent: 0 0% 15%;
-    --accent-foreground: 0 0% 100%;
+    --accent: 142 76% 36%; /* Green accent */
+    --accent-foreground: 220 20% 6%;
 
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 0 0% 100%;
+    --destructive: 0 75% 65%; /* Lighter red for dark */
+    --destructive-foreground: 220 14% 95%;
 
-    --border: 0 0% 20%;
-    --input: 0 0% 20%;
-    --ring: 0 0% 60%;
-    --sidebar-background: 0 0% 8%;
-    --sidebar-foreground: 0 0% 100%;
-    --sidebar-primary: 0 0% 100%;
-    --sidebar-primary-foreground: 0 0% 8%;
-    --sidebar-accent: 0 0% 15%;
-    --sidebar-accent-foreground: 0 0% 100%;
-    --sidebar-border: 0 0% 20%;
-    --sidebar-ring: 0 0% 60%;
+    --border: 220 13% 20%; /* Dark borders */
+    --input: 220 13% 20%;
+    --ring: 142 76% 36%; /* Green focus ring */
+
+    --sidebar-background: 220 20% 6%;
+    --sidebar-foreground: 220 14% 95%;
+    --sidebar-primary: 142 76% 36%;
+    --sidebar-primary-foreground: 220 20% 6%;
+    --sidebar-accent: 220 13% 15%;
+    --sidebar-accent-foreground: 220 14% 85%;
+    --sidebar-border: 220 13% 20%;
+    --sidebar-ring: 142 76% 36%;
+
+    /* Finance status colors for dark */
+    --success: 142 70% 45%;
+    --warning: 38 95% 56%;
+    --info: 199 89% 58%;
   }
 }
 
@@ -90,7 +103,193 @@
   }
 
   body {
-    @apply bg-background text-foreground font-sans;
-    font-family: 'Space Grotesk', system-ui, sans-serif;
+    @apply bg-background text-foreground;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-weight: 400;
+    line-height: 1.6;
+    letter-spacing: -0.01em;
+    position: relative;
+    overflow-x: hidden;
+  }
+
+  /* Minimal Grid Background */
+  body::before {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: 
+      linear-gradient(90deg, hsl(var(--border)) 1px, transparent 1px),
+      linear-gradient(hsl(var(--border)) 1px, transparent 1px);
+    background-size: 40px 40px;
+    opacity: 0.3;
+    z-index: -1;
+    pointer-events: none;
+  }
+
+  /* Clean layout container */
+  .finance-container {
+    position: relative;
+    z-index: 1;
+  }
+}
+
+@layer components {
+  /* Finance-inspired component styles */
+  .finance-card {
+    background: hsl(var(--card));
+    border: 1px solid hsl(var(--border));
+    border-radius: 12px;
+    padding: 24px;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 
+      0 1px 3px rgba(0, 0, 0, 0.05),
+      0 1px 2px rgba(0, 0, 0, 0.1);
+  }
+  
+  .finance-card:hover {
+    border-color: hsl(var(--primary));
+    box-shadow: 
+      0 4px 12px rgba(0, 0, 0, 0.1),
+      0 2px 4px rgba(0, 0, 0, 0.06);
+    transform: translateY(-2px);
+  }
+  
+  .finance-button-primary {
+    background: hsl(var(--primary));
+    color: hsl(var(--primary-foreground));
+    padding: 12px 24px;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 14px;
+    letter-spacing: -0.01em;
+    border: none;
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+  }
+  
+  .finance-button-primary:hover {
+    background: hsl(var(--primary));
+    opacity: 0.9;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+  }
+  
+  .finance-button-secondary {
+    background: hsl(var(--secondary));
+    color: hsl(var(--secondary-foreground));
+    padding: 12px 24px;
+    border-radius: 8px;
+    font-weight: 500;
+    font-size: 14px;
+    letter-spacing: -0.01em;
+    border: 1px solid hsl(var(--border));
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  
+  .finance-button-secondary:hover {
+    background: hsl(var(--muted));
+    border-color: hsl(var(--primary));
+    transform: translateY(-1px);
+  }
+
+  /* Typography styles */
+  .finance-heading {
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    line-height: 1.2;
+  }
+
+  .finance-subheading {
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    line-height: 1.3;
+    color: hsl(var(--muted-foreground));
+  }
+
+  .finance-body {
+    font-weight: 400;
+    line-height: 1.6;
+    color: hsl(var(--foreground));
+  }
+
+  /* Input styles */
+  .finance-input {
+    background: hsl(var(--background));
+    border: 1px solid hsl(var(--border));
+    border-radius: 8px;
+    padding: 12px 16px;
+    font-size: 14px;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    outline: none;
+  }
+
+  .finance-input:focus {
+    border-color: hsl(var(--primary));
+    box-shadow: 0 0 0 3px hsl(var(--primary) / 0.1);
+  }
+
+  /* Layout utilities */
+  .finance-grid {
+    display: grid;
+    gap: 24px;
+  }
+
+  .finance-flex {
+    display: flex;
+    gap: 16px;
+  }
+
+  .finance-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  /* Animation classes */
+  .finance-fade-in {
+    animation: financeSlideUp 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  @keyframes financeSlideUp {
+    from {
+      opacity: 0;
+      transform: translateY(16px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  /* Status indicators */
+  .finance-status {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 12px;
+    border-radius: 24px;
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .finance-status.success {
+    background: hsl(142 76% 36% / 0.1);
+    color: hsl(142 76% 36%);
+  }
+
+  .finance-status.warning {
+    background: hsl(38 92% 50% / 0.1);
+    color: hsl(38 92% 50%);
+  }
+
+  .finance-status.error {
+    background: hsl(0 84% 60% / 0.1);
+    color: hsl(0 84% 60%);
   }
 }

@@ -6,7 +6,8 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node app.js",
-    "dev": "nodemon app.js"
+    "dev": "nodemon app.js",
+    "db:init": "node -r dotenv/config ./db/init.js"
   },
   "keywords": [],
   "author": "",
@@ -20,7 +21,6 @@
     "express": "^5.1.0",
     "express-async-handler": "^1.2.0",
     "jsonwebtoken": "^9.0.2",
-    "mongoose": "^8.15.1",
     "node-fetch": "^3.3.2",
     "pg": "^8.16.0",
     "socket.io": "^4.8.1"

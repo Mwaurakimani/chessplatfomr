@@ -41,9 +41,9 @@ const PlatformSelector: React.FC<PlatformSelectorProps> = ({
 
   return (
     <div className="flex items-center space-x-2">
-      <div className="bg-[#1a1a1a] rounded-lg px-3 py-2">
-        <span className="text-sm text-gray-400">Playing on:</span>
-        <span className="ml-2 font-semibold">{currentPlatformData?.name}</span>
+      <div className="chess-card rounded-lg px-3 py-2 border border-border">
+        <span className="text-sm text-muted-foreground">Playing on:</span>
+        <span className="ml-2 font-semibold text-foreground">{currentPlatformData?.name}</span>
       </div>
       
       <DropdownMenu>

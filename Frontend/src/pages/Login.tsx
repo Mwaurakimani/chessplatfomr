@@ -55,63 +55,65 @@ const Login = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#141414] text-white">
+    <div className="min-h-screen bg-background text-foreground finance-container">
       <Header title="Welcome Back" showBack />
       
       <div className="p-6">
-        <div className="text-center mb-8">
-          <h2 className="text-3xl font-bold mb-2">Sign In</h2>
-          <p className="text-gray-400">Continue your chess journey</p>
+        <div className="text-center mb-8 finance-fade-in">
+          <h2 className="text-3xl mb-2 finance-heading">Sign In</h2>
+          <p className="finance-subheading">Continue your chequemate journey</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-6">
-          <div>
-            <Label htmlFor="email">Email</Label>
-            <Input
-              id="email"
-              name="email"
-              type="email"
-              value={formData.email}
-              onChange={handleChange}
-              className="mt-1 bg-[#1a1a1a] border-gray-700 text-white"
-              placeholder="your@email.com"
-              required
-            />
-          </div>
+        <div className="finance-card finance-fade-in">
+          <form onSubmit={handleSubmit} className="finance-stack">
+            <div>
+              <Label htmlFor="email" className="finance-body">Email</Label>
+              <Input
+                id="email"
+                name="email"
+                type="email"
+                value={formData.email}
+                onChange={handleChange}
+                className="mt-1 finance-input"
+                placeholder="your@email.com"
+                required
+              />
+            </div>
 
-          <div>
-            <Label htmlFor="password">Password</Label>
-            <Input
-              id="password"
-              name="password"
-              type="password"
-              value={formData.password}
-              onChange={handleChange}
-              className="mt-1 bg-[#1a1a1a] border-gray-700 text-white"
-              placeholder="Enter your password"
-              required
-            />
-          </div>
+            <div>
+              <Label htmlFor="password" className="finance-body">Password</Label>
+              <Input
+                id="password"
+                name="password"
+                type="password"
+                value={formData.password}
+                onChange={handleChange}
+                className="mt-1 finance-input"
+                placeholder="Enter your password"
+                required
+              />
+            </div>
 
-          <div className="flex items-center justify-between">
-            <Link to="/forgot-password" className="text-sm text-blue-400 hover:text-blue-300">
-              Forgot password?
-            </Link>
-          </div>
+            <div className="finance-flex items-center justify-between">
+              <Link to="/forgot-password" className="text-sm text-primary hover:text-primary/80 transition-colors">
+                Forgot password?
+              </Link>
+            </div>
 
-          <Button 
-            type="submit" 
-            className="w-full bg-blue-600 hover:bg-blue-700 text-white"
-            disabled={isLoading}
-          >
-            {isLoading ? "Signing In..." : "Sign In"}
-          </Button>
-        </form>
+            <Button 
+              type="submit" 
+              className="w-full finance-button-primary"
+              disabled={isLoading}
+            >
+              {isLoading ? "Signing In..." : "Sign In"}
+            </Button>
+          </form>
+        </div>
 
-        <div className="mt-6 text-center">
-          <p className="text-gray-400">
+        <div className="mt-6 text-center finance-fade-in">
+          <p className="finance-body">
             Don't have an account?{' '}
-            <Link to="/register" className="text-blue-400 hover:text-blue-300">
+            <Link to="/register" className="text-primary hover:text-primary/80 transition-colors font-medium">
               Create one
             </Link>
           </p>

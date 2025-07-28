@@ -36,7 +36,7 @@ const Register = () => {
     }
     setValidation('loading');
     try {
-      const res = await fetch('/api/match/validate-player', {
+      const res = await fetch('/api/auth/validate-player', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, platform })
@@ -146,7 +146,7 @@ const Register = () => {
     setIsLoading(true);
 
     try {
-      const signupSuccess = await signup({
+      const signupResult = await signup({
         email: formData.email,
         password: formData.password,
         username: formData.username,
@@ -156,7 +156,7 @@ const Register = () => {
         lichessUsername: formData.lichessUsername || undefined,
         preferredPlatform: formData.preferredPlatform
       });
-      if (signupSuccess) {
+      if (signupResult.success) {
         // Fetch chess data after signup
         let chessData = null;
         if (formData.preferredPlatform === 'chess.com' && formData.chessComUsername) {
@@ -180,7 +180,7 @@ const Register = () => {
       } else {
         toast({
           title: "Registration failed",
-          description: "Unable to create account. Please try again.",
+          description: signupResult.message || "Unable to create account. Please try again.",
           variant: "destructive",
         });
       }

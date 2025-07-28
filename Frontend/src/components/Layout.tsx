@@ -1,12 +1,12 @@
-import React, { useContext } from "react";
+import React from "react";
 import { Outlet, useLocation, Link } from "react-router-dom";
 import { Users, MessageSquare, User } from "lucide-react";
-import { RequestsCountContext } from "../pages/Requests";
+import { useRequests } from "./contexts/RequestsContext";
 import ChallengeModal from "./ChallengeModal";
 
 const Layout = () => {
   const location = useLocation();
-  const { incomingRequestsCount } = useContext(RequestsCountContext);
+  const { incomingRequestsCount } = useRequests();
   const showNotificationBadge =
     location.pathname !== "/requests" && incomingRequestsCount > 0;
   const navItems = [
@@ -37,9 +37,9 @@ const Layout = () => {
             >
               <div className="relative">
                 <Icon size={20} />
-                {/* Notification badge for requests positioned at top right of icon */}
+                {/* Green notification badge for requests positioned at top right of icon */}
                 {path === "/requests" && showNotificationBadge && (
-                  <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center font-bold">
+                  <span className="absolute -top-2 -right-2 bg-green-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center font-bold">
                     {incomingRequestsCount}
                   </span>
                 )}

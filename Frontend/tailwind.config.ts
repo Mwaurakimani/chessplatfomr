@@ -48,6 +48,13 @@ export default {
 					DEFAULT: 'hsl(var(--accent))',
 					foreground: 'hsl(var(--accent-foreground))'
 				},
+				// Chess-inspired colors
+				chess: {
+					'light-square': 'hsl(var(--chess-light-square))',
+					'dark-square': 'hsl(var(--chess-dark-square))',
+					'hover': 'hsl(var(--chess-hover))',
+					'selected': 'hsl(var(--chess-selected))'
+				},
 				popover: {
 					DEFAULT: 'hsl(var(--popover))',
 					foreground: 'hsl(var(--popover-foreground))'
