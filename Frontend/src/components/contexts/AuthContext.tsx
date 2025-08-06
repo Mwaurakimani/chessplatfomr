@@ -102,7 +102,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     if (!user) return;
     if (socketRef.current) return; // Prevent multiple connections
-    const socket = io('http://localhost:3000', { transports: ['websocket'] });
+    const socket = io('http://localhost:3001', { transports: ['websocket'] });
     socketRef.current = socket;
     // Emit user-online event with user info
     socket.emit('user-online', {
@@ -196,7 +196,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       // The login API call is now handled in the Login component
       // We just need to set up the user session here using the response data
-      const response = await fetch('http://localhost:3000/api/auth/login', {
+      const response = await fetch('http://localhost:3001/api/auth/login', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -246,7 +246,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     preferredPlatform: 'chess.com' | 'lichess.org';
   }): Promise<{ success: boolean; message?: string }> => {
     try {
-      const response = await fetch('http://localhost:3000/api/auth/register', {
+      const response = await fetch('http://localhost:3001/api/auth/register', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

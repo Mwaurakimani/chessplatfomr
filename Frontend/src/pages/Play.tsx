@@ -83,11 +83,12 @@ const Play = () => {
           username: selectedPlayer.username,
           name: selectedPlayer.name,
         },
+        platform: currentPlatform, // Include the platform information
         timestamp: Date.now(),
       });
       toast({
         title: 'Challenge Sent',
-        description: `You challenged ${selectedPlayer.name}`,
+        description: `You challenged ${selectedPlayer.name} on ${currentPlatform}`,
       });
     }
     setModalOpen(false);
@@ -455,13 +456,13 @@ const Play = () => {
                 </div>
                 <div className="flex space-x-2">
                   <button
-                    className="flex-1 chess-button-primary py-3 rounded-lg font-medium"
+                    className="flex-1 bg-green-600 hover:bg-green-700 text-white py-3 rounded-lg font-medium transition-colors"
                     onClick={handleChallenge}
                   >
                     Challenge
                   </button>
                   <button
-                    className="flex-1 chess-button-secondary py-3 rounded-lg font-medium"
+                    className="flex-1 border-2 border-green-600 hover:border-green-700 hover:bg-green-50 text-green-600 hover:text-green-700 py-3 rounded-lg font-medium transition-colors"
                     onClick={handleViewProfile}
                   >
                     View Profile

@@ -115,10 +115,10 @@ export const ChallengeProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         let redirectUrl = '';
         if (data.platform === 'chess.com') {
           const opponentUsername = opponent.chessComUsername || opponent.username;
-          redirectUrl = `https://www.chess.com/play/online/new?opponent=${opponentUsername}`;
+          redirectUrl = `https://www.chess.com/play/online/new?opponent=${opponentUsername.toLowerCase()}`;
         } else if (data.platform === 'lichess.org') {
           const opponentUsername = opponent.lichessUsername || opponent.username;
-          redirectUrl = `https://lichess.org/challenge/${opponentUsername}`;
+          redirectUrl = `https://lichess.org/?user=${opponentUsername.toLowerCase()}#friend`;
         }
 
         if (redirectUrl) {

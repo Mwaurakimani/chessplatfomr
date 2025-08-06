@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS users (
     chess_com_username VARCHAR(255),
     lichess_username VARCHAR(255),
     preferred_platform VARCHAR(50) NOT NULL,
+    slogan VARCHAR(500) DEFAULT 'Ready to Play!',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 ); 

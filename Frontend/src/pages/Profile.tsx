@@ -22,7 +22,19 @@ const Profile = () => {
     preferredPlatform: user?.preferredPlatform || 'chess.com'
   });
   
-  const [editedProfile, setEditedProfile] = useState({
+  const [editedProfile, setEditedProfile] = useState<{
+    name: string;
+    username: string;
+    email: string;
+    phone: string;
+    catchphrase?: string;
+    rating: number;
+    rank: string;
+    country: string;
+    chessComUsername?: string;
+    lichessUsername?: string;
+    preferredPlatform: 'chess.com' | 'lichess.org';
+  }>({
     name: "",
     username: "",
     email: "",
@@ -33,12 +45,13 @@ const Profile = () => {
     country: "🇰🇪",
     chessComUsername: "",
     lichessUsername: "",
-    preferredPlatform: "chess.com" as 'chess.com' | 'lichess.org'
+    preferredPlatform: "chess.com"
   });
   const [currentRating, setCurrentRating] = useState(1200);
   const [ratingStats, setRatingStats] = useState(null);
   const [loadingRating, setLoadingRating] = useState(false);
   const [recentMatches, setRecentMatches] = useState([]);
+  const [matchStats, setMatchStats] = useState(null); // New state for match statistics
   const [loadingMatches, setLoadingMatches] = useState(false);
   const [userStats, setUserStats] = useState({
     totalGames: 0,
@@ -65,12 +78,14 @@ const Profile = () => {
         const userData = await response.json();
         setProfileUser(userData);
         // Update current rating from backend data
-        if (userData.current_rating) {
+        if (userData.current_rating && userData.current_rating !== 1200) {
           setCurrentRating(userData.current_rating);
+        } else if (userData.rating && userData.rating !== 1200) {
+          setCurrentRating(userData.rating);
         }
         // Fetch additional data for this user
         fetchUserStats(targetUsername);
-        fetchUserRecentMatches(targetUsername);
+        // Don't call fetchUserRecentMatches here since we'll call fetchRecentMatches in useEffect
       } else {
         console.error('User profile API error:', response.status);
         toast({
@@ -105,7 +120,8 @@ const Profile = () => {
       
       if (response.ok) {
         const data = await response.json();
-        setUserStats(data.stats);
+        console.log('fetchUserStats data:', data);
+        setUserStats(data.stats || {});
       } else {
         console.error('User stats API error:', response.status);
       }
@@ -131,6 +147,9 @@ const Profile = () => {
       if (response.ok) {
         const data = await response.json();
         setRecentMatches(data.matches || []);
+        if (data.stats) {
+          setMatchStats(data.stats); // Store match stats separately
+        }
       } else {
         console.error('User matches API error:', response.status);
       }
@@ -149,19 +168,24 @@ const Profile = () => {
   const chessGames = profileUser?.chessGames;
 
   // Fetch current rating from chess platform
-  const fetchCurrentRating = async () => {
+  const fetchCurrentRating = async (targetUsername?: string) => {
     if (!user) {
       return;
     }
-    if (username && username !== user.username) {
-      return;
-    }
+    
+    const usernameToFetch = targetUsername || user.username;
     
     setLoadingRating(true);
     try {
       const token = localStorage.getItem('token');
       
-      const response = await fetch('/api/auth/current-rating', {
+      // For other users, force refresh their rating data
+      const forceRefresh = targetUsername && targetUsername !== user.username ? '?forceRefresh=true' : '';
+      const endpoint = targetUsername && targetUsername !== user.username 
+        ? `/api/users/profile/${targetUsername}${forceRefresh}`
+        : '/api/auth/current-rating';
+      
+      const response = await fetch(endpoint, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
@@ -170,8 +194,16 @@ const Profile = () => {
       
       if (response.ok) {
         const data = await response.json();
-        setCurrentRating(data.rating);
-        setRatingStats(data.stats);
+        
+        if (targetUsername && targetUsername !== user.username) {
+          // For other users, extract rating from user profile data
+          const rating = data.current_rating || data.rating || 1200;
+          setCurrentRating(rating);
+        } else {
+          // For own profile, use current rating endpoint format
+          setCurrentRating(data.rating || data.current_rating || 1200);
+          setRatingStats(data.stats);
+        }
       } else {
         console.error('Rating API error:', response.status);
       }
@@ -205,9 +237,12 @@ const Profile = () => {
       
       if (response.ok) {
         const data = await response.json();
+        console.log('fetchRecentMatches data:', data);
         setRecentMatches(data.matches || []);
         if (data.stats) {
-          setRatingStats(data.stats);
+          console.log('Setting matchStats from fetchRecentMatches:', data.stats);
+          setMatchStats(data.stats); // Store match stats separately
+          setRatingStats(data.stats); // Keep for backwards compatibility
         }
       } else {
         console.error('Recent matches API error:', response.status);
@@ -223,40 +258,70 @@ const Profile = () => {
     if (username) {
       // Viewing another user's profile
       fetchUserProfile(username);
+      fetchCurrentRating(username); // Fetch rating for the specific user
+      fetchRecentMatches(username); // Also fetch via the main recent matches endpoint
     } else if (user) {
       // Viewing own profile
       setProfileUser(user);
-      fetchCurrentRating();
+      fetchCurrentRating(); // Fetch own rating
       fetchRecentMatches();
       fetchUserStats(user.username);
     }
   }, [user, username]);
 
-  // Use fetched rating, with fallback logic
-  let rating = currentRating;
-  if (displayUser?.current_rating) {
+  // Use fetched rating, with proper priority logic
+  let rating = 1200; // Default fallback
+  
+  // Priority 1: Freshly fetched current rating (most recent API call)
+  if (currentRating && currentRating !== 1200) {
+    rating = currentRating;
+  }
+  // Priority 2: Backend cached rating from profile
+  else if (displayUser?.current_rating && displayUser.current_rating !== 1200) {
     rating = displayUser.current_rating;
-  } else if (displayUser?.rating) {
+  }
+  // Priority 3: Legacy rating field
+  else if (displayUser?.rating && displayUser.rating !== 1200) {
     rating = displayUser.rating;
   }
 
-  // Use fetched stats (prioritize userStats over ratingStats)
-  let stats = userStats.totalGames > 0 ? userStats : {
+  // Use enhanced match stats when available, with fallback logic
+  let stats = {
     totalGames: 0,
     wins: 0,
     losses: 0,
     draws: 0,
-    winRate: 0
+    winRate: 0,
+    currentStreak: 0,
+    longestWinStreak: 0,
+    averageOpponentRating: 0,
+    platform: displayUser?.preferred_platform || 'chess.com'
   };
-  
-  // If we have ratingStats (for current user) and no userStats, use ratingStats
-  if (stats.totalGames === 0 && ratingStats) {
+
+  // Priority: matchStats > userStats > ratingStats (matchStats should always take precedence if available)
+  if (matchStats && (matchStats.totalGames > 0 || matchStats.wins > 0 || matchStats.losses > 0)) {
+    console.log('Using matchStats:', matchStats);
+    stats = { ...stats, ...matchStats };
+  } else if (userStats && (userStats.totalGames > 0 || userStats.wins > 0 || userStats.losses > 0)) {
+    console.log('Using userStats:', userStats);
+    stats.totalGames = userStats.totalGames || 0;
+    stats.wins = userStats.wins || 0;
+    stats.losses = userStats.losses || 0;
+    stats.draws = userStats.draws || 0;
+    stats.winRate = userStats.winRate || 0;
+    stats.currentStreak = userStats.currentStreak || 0;
+    stats.longestWinStreak = userStats.longestWinStreak || 0;
+    stats.averageOpponentRating = userStats.averageOpponentRating || 0;
+  } else if (ratingStats) {
+    console.log('Using ratingStats:', ratingStats);
     stats.wins = ratingStats.wins || 0;
     stats.losses = ratingStats.losses || 0;
     stats.draws = ratingStats.draws || 0;
     stats.totalGames = ratingStats.totalGames || stats.wins + stats.losses + stats.draws;
     stats.winRate = ratingStats.winRate || (stats.totalGames > 0 ? Math.round((stats.wins / stats.totalGames) * 100) : 0);
   }
+  
+  console.log('Final stats being used:', stats);
   
   let matchHistory: any[] = recentMatches;
 
@@ -293,7 +358,19 @@ const Profile = () => {
   };
 
   const handleCancel = () => {
-    setEditedProfile(user || editedProfile);
+    setEditedProfile({
+      name: user?.name || '',
+      username: user?.username || '',
+      email: user?.email || '',
+      phone: user?.phone || '',
+      catchphrase: user?.catchphrase || '',
+      rating: user?.rating || 0,
+      rank: user?.rank || '',
+      country: user?.country || '',
+      chessComUsername: user?.chessComUsername || '',
+      lichessUsername: user?.lichessUsername || '',
+      preferredPlatform: user?.preferredPlatform || 'chess.com'
+    });
     setIsEditing(false);
   };
 
@@ -614,28 +691,74 @@ const Profile = () => {
         <div className="chess-card p-4 mb-4">
           <h3 className="text-lg font-semibold mb-3 flex items-center">
             <Target size={20} className="mr-2" />
-            Statistics
+            Recent Games Statistics
           </h3>
-          {loadingStats ? (
+          {loadingStats || loadingMatches ? (
             <div className="text-center py-4 text-muted-foreground">Loading statistics...</div>
           ) : (
-            <div className="grid grid-cols-2 gap-4">
-              <div className="text-center">
-                <div className="text-2xl font-bold text-foreground">{stats.totalGames}</div>
-                <div className="text-sm text-muted-foreground">Total Games</div>
+            <div className="space-y-4">
+              {/* Main Stats Grid */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-foreground">{stats.totalGames}</div>
+                  <div className="text-sm text-muted-foreground">Total Games</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-foreground">{stats.winRate}%</div>
+                  <div className="text-sm text-muted-foreground">Win Rate</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-foreground">{stats.wins}</div>
+                  <div className="text-sm text-muted-foreground">Wins</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-foreground">{stats.losses}</div>
+                  <div className="text-sm text-muted-foreground">Losses</div>
+                </div>
               </div>
-              <div className="text-center">
-                <div className="text-2xl font-bold text-foreground">{stats.winRate}%</div>
-                <div className="text-sm text-muted-foreground">Win Rate</div>
-              </div>
-              <div className="text-center">
-                <div className="text-2xl font-bold text-foreground">{stats.wins}</div>
-                <div className="text-sm text-muted-foreground">Wins</div>
-              </div>
-              <div className="text-center">
-                <div className="text-2xl font-bold text-foreground">{stats.losses}</div>
-                <div className="text-sm text-muted-foreground">Losses</div>
-              </div>
+
+              {/* Additional Stats */}
+              {matchStats && matchStats.totalGames > 0 && (
+                <div className="pt-4 border-t border-border">
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div>
+                      <span className="text-muted-foreground">Current Streak:</span>
+                      <span className={`ml-1 font-medium ${
+                        (matchStats.currentStreak || 0) > 0 
+                          ? 'text-green-600' 
+                          : (matchStats.currentStreak || 0) < 0 
+                            ? 'text-red-600' 
+                            : 'text-muted-foreground'
+                      }`}>
+                        {Math.abs(matchStats.currentStreak || 0) === 0 
+                          ? 'None' 
+                          : `${Math.abs(matchStats.currentStreak || 0)} ${
+                              (matchStats.currentStreak || 0) > 0 ? 'Win' : 'Loss'
+                            }${Math.abs(matchStats.currentStreak || 0) !== 1 ? 's' : ''}`
+                        }
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">Avg Opponent:</span>
+                      <span className="ml-1 font-medium">
+                        {matchStats.averageOpponentRating || 'N/A'}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">Best Win Streak:</span>
+                      <span className="ml-1 font-medium text-green-600">
+                        {matchStats.longestWinStreak || 0}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">Platform:</span>
+                      <span className="ml-1 font-medium">
+                        {matchStats.platform === 'chess.com' ? 'Chess.com' : 'Lichess.org'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>

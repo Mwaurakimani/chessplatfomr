@@ -40,12 +40,21 @@ const register = async (req, res) => {
             preferredPlatform
         } = req.body;
 
-        // Check if user already exists
-        const existingUser = await User.findByEmail(email);
-        if (existingUser) {
+        // Check if user already exists by email
+        const existingUserByEmail = await User.findByEmail(email);
+        if (existingUserByEmail) {
             return res.status(400).json({
                 success: false,
                 message: 'User with this email already exists'
+            });
+        }
+
+        // Check if username already exists
+        const existingUserByUsername = await User.findByUsername(username);
+        if (existingUserByUsername) {
+            return res.status(400).json({
+                success: false,
+                message: 'Username already taken. Please choose a different username.'
             });
         }
 
@@ -130,6 +139,22 @@ const register = async (req, res) => {
         });
     } catch (error) {
         console.error('Registration error:', error);
+        
+        // Handle specific database constraint violations
+        if (error.code === '23505') { // Unique constraint violation
+            if (error.constraint && error.constraint.includes('email')) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Email address is already registered'
+                });
+            } else if (error.constraint && error.constraint.includes('username')) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Username already taken. Please choose a different username.'
+                });
+            }
+        }
+        
         res.status(500).json({
             success: false,
             message: 'Error registering user',
