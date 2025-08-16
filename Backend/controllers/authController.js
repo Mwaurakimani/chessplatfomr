@@ -116,6 +116,17 @@ const register = async (req, res) => {
         }
 
         // Create new user
+        console.log({
+            email,
+            password,
+            username,
+            phone,
+            name,
+            chessComUsername,
+            lichessUsername,
+            preferredPlatform
+        });
+        
         const user = await User.create({
             email,
             password,

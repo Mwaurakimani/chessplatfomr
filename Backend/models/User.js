@@ -1,36 +1,37 @@
-import pool from '../config/database.js';
+import pool from '../config/database.js'; // PostgreSQL pool
 import bcrypt from 'bcrypt';
 
 class User {
     static async create(userData) {
         const {
             email,
-            password,
+            password, // This password should already be plain text here, hashed below
             username,
             phone,
-            name,
             chessComUsername,
             lichessUsername,
             preferredPlatform
         } = userData;
 
-        // Hash the password
+        console.log(userData)
+
+        // Hash the password - This part is correct and crucial for security
         const hashedPassword = await bcrypt.hash(password, 10);
 
+        // PostgreSQL INSERT query with '$' placeholders
         const query = `
             INSERT INTO users (
-                email, 
-                password, 
-                username, 
-                phone, 
-                name, 
-                chess_com_username, 
-                lichess_username, 
+                email,
+                password,
+                username,
+                phone,
+                chess_com_username,
+                lichess_username,
                 preferred_platform,
                 created_at
-            ) 
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
-            RETURNING id, email, username;
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+            RETURNING *
         `;
 
         const values = [
@@ -38,26 +39,41 @@ class User {
             hashedPassword,
             username,
             phone,
-            name,
-            chessComUsername,
-            lichessUsername,
+            chessComUsername || null, // Handle optional fields
+            lichessUsername || null,
             preferredPlatform
         ];
 
+        console.log(values);
+
         try {
+            // Using pool.query() for PostgreSQL
             const result = await pool.query(query, values);
-            return result.rows[0];
+
+            // Construct the user object to return from PostgreSQL result
+            const newUser = result.rows[0];
+            return {
+                id: newUser.id,
+                email: newUser.email,
+                username: newUser.username
+                // You can add other fields from userData if needed by the controller
+            };
         } catch (error) {
+            console.error('Error in User.create:', error);
+            // Re-throw the error so the controller can handle it (e.g., duplicate entry)
             throw error;
         }
     }
 
     static async findByEmail(email) {
+        // PostgreSQL SELECT query with '$' placeholder
         const query = 'SELECT * FROM users WHERE email = $1';
         try {
+            // Using pool.query() for PostgreSQL
             const result = await pool.query(query, [email]);
-            return result.rows[0];
+            return result.rows[0] || null; // Return the first row found or null if none
         } catch (error) {
+            console.error('Error in User.findByEmail:', error);
             throw error;
         }
     }

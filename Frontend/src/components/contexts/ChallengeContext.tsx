@@ -129,10 +129,10 @@ export const ChallengeProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         setIncomingChallenge(null);
       };
 
-      socket.on('challenge-accepted', handleChallengeAccepted);
+      socket.on('challengeAccepted', handleChallengeAccepted);
 
       return () => {
-        socket.off('challenge-accepted', handleChallengeAccepted);
+        socket.off('challengeAccepted', handleChallengeAccepted);
       };
     }
   }, [socketRef, toast, user]);

@@ -1,13 +1,6 @@
-import pg from 'pg';
-const { Pool } = pg;
-
-// const pool = new Pool({
-//     database: "chequemate",
-//     user: "aerissat",
-//     password: "root",
-//     host: "localhost",
-//     port: 5432
-// });
+import 'dotenv/config';
+import pkg from 'pg';
+const { Pool } = pkg;
 
 const pool = new Pool({
     database: "chequemate",
@@ -16,9 +9,7 @@ const pool = new Pool({
     host: "chequemate-service-chequemate-db.g.aivencloud.com",
     port: 20381,
     ssl: {
-        rejectUnauthorized: false,  
-        // OR, for full validation, download the “CA certificate” from Aiven and do:
-        // ca: fs.readFileSync(path.resolve(__dirname, 'aiven-ca.pem')).toString()
+        rejectUnauthorized: false,
     }
 });
 

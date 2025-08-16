@@ -115,6 +115,25 @@ const Requests = () => {
       const timeControl = activeChallenge.time_control;
       const opponent = isUserChallenger ? activeChallenge.opponent.username : activeChallenge.challenger.username;
       
+      // ⚡ CRITICAL: Emit redirection event to backend BEFORE opening the game
+      if (socketRef?.current && user) {
+        const redirectData = {
+          challengeId: activeChallenge.id,
+          challengerId: activeChallenge.challenger.id,
+          challengedId: activeChallenge.opponent.id,
+          redirectedBy: user.id,
+          platform: platform
+        };
+        
+        console.log('🎮 Emitting game-redirect event:', redirectData);
+        socketRef.current.emit('game-redirect', redirectData);
+      } else {
+        console.error('❌ Cannot emit game-redirect: socketRef or user missing', {
+          socketExists: !!socketRef?.current,
+          userExists: !!user
+        });
+      }
+      
       // Use the same logic as startMatch3.html for proper opponent pre-loading
       if (platform === 'chess.com') {
         // Use the proper chess.com challenge URL that pre-loads the opponent

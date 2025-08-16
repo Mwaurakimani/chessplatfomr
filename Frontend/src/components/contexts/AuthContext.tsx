@@ -62,6 +62,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const challenger = challenge.challenger.username;
     const opponent = challenge.opponent.username;
     
+    // ⚡ CRITICAL: Emit redirection event to backend BEFORE opening the game
+    if (socketRef?.current && user) {
+      const redirectData = {
+        challengeId: challenge.id,
+        challengerId: challenge.challenger.id,
+        challengedId: challenge.opponent.id,
+        redirectedBy: user.id,
+        platform: platform
+      };
+      
+      console.log('🎮 Challenger emitting game-redirect event:', redirectData);
+      socketRef.current.emit('game-redirect', redirectData);
+    } else {
+      console.error('❌ Cannot emit game-redirect: socketRef or user missing', {
+        socketExists: !!socketRef?.current,
+        userExists: !!user
+      });
+    }
+    
     // For chess.com games, use the direct challenge URL with opponent pre-loaded
     if (platform === 'chess.com') {
       // Use the proper chess.com challenge URL that pre-loads the opponent
@@ -185,6 +204,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     });
 
+    // Listen for victory notifications
+    socket.on('victory-notification', (data) => {
+      console.log('🏆 Victory notification received:', data);
+      
+      toast({
+        title: '🏆 Chequemate! You Won!',
+        description: `You won against ${data.opponent}! 🎉`,
+        duration: 10000,
+        action: data.gameUrl ? (
+          <ToastAction 
+            altText="View Game" 
+            onClick={() => window.open(data.gameUrl, '_blank')}
+          >
+            View Game
+          </ToastAction>
+        ) : undefined,
+      });
+    });
+
     // Cleanup on unmount or logout
     return () => {
       socket.disconnect();
@@ -234,6 +272,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return false;
     }
   };
+
+  // Signup function to register a new user
 
   const signup = async (userData: {
     email: string;

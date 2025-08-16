@@ -5,12 +5,15 @@ import { Server as SocketIOServer } from 'socket.io';
 import cors from 'cors';
 import pool from './config/database.js';
 import Challenge from './models/Challenge.js';
+import OngoingMatch from './models/OngoingMatch.js';
+import MatchResultChecker from './services/MatchResultChecker.js';
 
 import authRoutes from './routes/auth.js';
 import challengeRoutes from './routes/challengeRoutes.js';
 import gameRoutes from './routes/gameRoutes.js';
 import userRoutes from './routes/userRoutes.js';
 import matchmakingRoutes from './routes/matchmaking.js';
+import matchResultRoutes from './routes/matchResultRoutes.js';
 
 dotenv.config();
 
@@ -185,36 +188,122 @@ io.on('connection', (socket) => {
     try {
       const { challengeId, challengerId, challengedId, redirectedBy, platform } = data;
       
-      // Get challenge data to find usernames
-      const challenges = await Challenge.findByUserId(challengerId);
-      const challenge = challenges.find(c => c.id === parseInt(challengeId));
+      console.log(`🎮 [${new Date().toISOString()}] Received game-redirect event:`, {
+        challengeId,
+        challengerId,
+        challengedId,
+        redirectedBy,
+        platform
+      });
       
-      if (challenge) {
-        const redirectedUser = redirectedBy === challengerId ? challenge.challenger.username : challenge.opponent.username;
-        const otherUserId = redirectedBy === challengerId ? challengedId : challengerId;
+      // Get challenge data by ID directly with optimized query
+      const challengeQuery = await pool.query(`
+        SELECT c.id, c.challenger, c.opponent, c.platform, c.status,
+               challenger_user.username as challenger_username,
+               opponent_user.username as opponent_username
+        FROM challenges c
+        JOIN users challenger_user ON c.challenger = challenger_user.id
+        JOIN users opponent_user ON c.opponent = opponent_user.id
+        WHERE c.id = $1
+      `, [challengeId]);
+      
+      if (challengeQuery.rows.length > 0) {
+        const challengeData = challengeQuery.rows[0];
+        
+        console.log(`🔍 [${new Date().toISOString()}] Found challenge ${challengeId}:`, {
+          id: challengeData.id,
+          challengerId: challengeData.challenger,
+          challengerUsername: challengeData.challenger_username,
+          opponentId: challengeData.opponent,
+          opponentUsername: challengeData.opponent_username,
+          platform: challengeData.platform,
+          status: challengeData.status
+        });
+        
+        const redirectedUser = redirectedBy === challengeData.challenger ? challengeData.challenger_username : challengeData.opponent_username;
+        const otherUserId = redirectedBy === challengeData.challenger ? challengeData.opponent : challengeData.challenger;
+        
+        console.log(`👤 [${new Date().toISOString()}] User ${redirectedUser} (ID: ${redirectedBy}) redirected to ${platform}`);
         
         const redirectData = {
           challengeId,
-          challengerId,
-          challengedId,
+          challengerId: challengeData.challenger,
+          challengedId: challengeData.opponent,
           redirectedBy,
           redirectedUser,
           platform
         };
-        
-        console.log('Emitting player-redirected to user:', otherUserId, redirectData);
+
+        console.log(`📡 [${new Date().toISOString()}] Emitting player-redirected to user:`, otherUserId, redirectData);
         
         // Notify specifically the other user that someone has redirected to the platform
         io.to(otherUserId.toString()).emit('player-redirected', redirectData);
         
-        console.log('Player redirected to platform:', { challengeId, redirectedUser, platform });
+        // Create or update ongoing match tracking (async without blocking)
+        setImmediate(async () => {
+          try {
+            const existingMatch = await OngoingMatch.findByChallenge(challengeId);
+            
+            if (existingMatch) {
+              console.log(`🔄 [${new Date().toISOString()}] Found existing ongoing match ${existingMatch.id} for challenge ${challengeId}`);
+              
+              const isChallenger = redirectedBy === challengeData.challenger;
+              console.log(`🎯 [${new Date().toISOString()}] User ${redirectedUser} is ${isChallenger ? 'challenger' : 'opponent'}`);
+              
+              const updatedMatch = await OngoingMatch.updateRedirection(challengeId, redirectedBy, isChallenger);
+              
+              console.log(`✅ [${new Date().toISOString()}] Updated redirection for match ${existingMatch.id}:`, {
+                challengerRedirected: updatedMatch.challenger_redirected,
+                opponentRedirected: updatedMatch.opponent_redirected,
+                bothRedirected: updatedMatch.both_redirected,
+                matchStartedAt: updatedMatch.match_started_at
+              });
+            } else {
+              console.log(`🆕 [${new Date().toISOString()}] Creating new ongoing match for challenge ${challengeId}`);
+              
+              const matchData = {
+                challengeId: parseInt(challengeId),
+                challengerId: challengeData.challenger,
+                opponentId: challengeData.opponent,
+                platform: platform,
+                challengerUsername: challengeData.challenger_username,
+                opponentUsername: challengeData.opponent_username
+              };
+              
+              const newMatch = await OngoingMatch.create(matchData);
+              console.log(`🎯 [${new Date().toISOString()}] Created new ongoing match:`, {
+                matchId: newMatch.id,
+                challengeId: newMatch.challenge_id,
+                challenger: `${newMatch.challenger_username} (ID: ${newMatch.challenger_id})`,
+                opponent: `${newMatch.opponent_username} (ID: ${newMatch.opponent_id})`,
+                platform: newMatch.platform
+              });
+              
+              const isChallenger = redirectedBy === challengeData.challenger;
+              console.log(`🎯 [${new Date().toISOString()}] User ${redirectedUser} is ${isChallenger ? 'challenger' : 'opponent'}`);
+              
+              const updatedMatch = await OngoingMatch.updateRedirection(challengeId, redirectedBy, isChallenger);
+              
+              console.log(`✅ [${new Date().toISOString()}] Updated redirection for new match ${newMatch.id}:`, {
+                challengerRedirected: updatedMatch.challenger_redirected,
+                opponentRedirected: updatedMatch.opponent_redirected,
+                bothRedirected: updatedMatch.both_redirected,
+                matchStartedAt: updatedMatch.match_started_at
+              });
+            }
+          } catch (trackingError) {
+            console.error(`❌ [${new Date().toISOString()}] Error tracking match:`, trackingError);
+          }
+        });
+        
+        console.log(`🎮 [${new Date().toISOString()}] Player ${redirectedUser} redirected to platform: ${platform}`);
+      } else {
+        console.error(`❌ [${new Date().toISOString()}] Challenge ${challengeId} not found in database`);
       }
     } catch (error) {
-      console.error('Error handling game redirect:', error);
+      console.error(`❌ [${new Date().toISOString()}] Error handling game redirect:`, error);
     }
-  });
-
-  socket.on('game-start', async (data) => {
+  });  socket.on('game-start', async (data) => {
     try {
       const { challengeId, challengerId, challengedId, platform } = data;
       
@@ -258,6 +347,7 @@ app.use('/api/challenges', challengeRoutes);
 app.use('/api/games', gameRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/matchmaking', matchmakingRoutes);
+app.use('/api/match-results', matchResultRoutes);
 
 // Error handling middleware
 app.use((err, req, res, next) => {
@@ -271,6 +361,7 @@ app.use((err, req, res, next) => {
 
 const PORT = process.env.PORT || 3001;
 
+// Test PostgreSQL connection
 pool.connect((err, client, release) => {
   if (err) {
     return console.error('Error acquiring client', err.stack);
@@ -284,4 +375,10 @@ pool.connect((err, client, release) => {
   });
 });
 
-server.listen(PORT, () => console.log(`Server is running on port ${PORT}`));
+server.listen(PORT, () => {
+  console.log(`Server is running on port ${PORT}`);
+  
+  // Initialize match result checker (starts automatically)
+  const matchChecker = new MatchResultChecker(io);
+  console.log('Match result checker initialized and started');
+});
