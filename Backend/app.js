@@ -56,12 +56,18 @@ io.on('connection', (socket) => {
     try {
       const { from, to } = data;
       
+      // Extract time control from either time_control field or timeConfig object
+      let timeControl = data.time_control || '10+0';
+      if (data.timeConfig) {
+        timeControl = `${data.timeConfig.timeMinutes}+${data.timeConfig.incrementSeconds}`;
+      }
+      
       // Create challenge in database
       const challenge = await Challenge.create({
         challenger: from.id,
         opponent: to.id,
         platform: data.platform || 'chess.com', // Default to chess.com if not provided
-        time_control: data.time_control || '10+0',
+        time_control: timeControl,
         rules: data.rules || 'chess'
       });
 
@@ -84,7 +90,10 @@ io.on('connection', (socket) => {
         time_control: challenge.time_control,
         rules: challenge.rules,
         status: challenge.status,
-        createdAt: challenge.created_at
+        createdAt: challenge.created_at,
+        // Pass through additional time configuration data for frontend
+        timeConfig: data.timeConfig,
+        challengeUrl: data.challengeUrl
       };
 
       // Emit to the opponent that they have a new challenge

@@ -58,7 +58,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const createAndStartGame = (challenge: any) => {
     const platform = challenge.platform;
-    const timeControl = challenge.time_control;
+    const timeControl = challenge.time_control || challenge.timeConfig?.displayName;
     const challenger = challenge.challenger.username;
     const opponent = challenge.opponent.username;
     
@@ -81,16 +81,44 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
     }
     
+    // Check if challenge has a pre-configured URL with time parameters
+    if (challenge.challengeUrl) {
+      console.log('🎯 Using pre-configured challenge URL with time controls:', challenge.challengeUrl);
+      window.open(challenge.challengeUrl, '_blank');
+      
+      toast({
+        title: 'Game Starting!',
+        description: `Opening ${platform === 'chess.com' ? 'Chess.com' : 'Lichess.org'} with ${timeControl} time control and ${opponent} pre-loaded. Start the game!`,
+        duration: 15000,
+      });
+      return;
+    }
+    
+    // Fallback to old URL generation method with time parameters
     // For chess.com games, use the direct challenge URL with opponent pre-loaded
     if (platform === 'chess.com') {
-      // Use the proper chess.com challenge URL that pre-loads the opponent
-      const gameUrl = `https://www.chess.com/play/online/new?opponent=${opponent.toLowerCase()}`;
+      // Extract time configuration and build URL with time parameters
+      let timeParam = '';
+      if (challenge.timeConfig) {
+        const timeInSeconds = challenge.timeConfig.timeMinutes * 60;
+        timeParam = `&time=${timeInSeconds}|${challenge.timeConfig.incrementSeconds}`;
+      } else if (challenge.time_control) {
+        // Parse time_control format like "5+3" 
+        const [minutes, increment] = challenge.time_control.split('+').map(Number);
+        if (!isNaN(minutes) && !isNaN(increment)) {
+          const timeInSeconds = minutes * 60;
+          timeParam = `&time=${timeInSeconds}|${increment}`;
+        }
+      }
+      
+      // Use the proper chess.com challenge URL that pre-loads the opponent with time control
+      const gameUrl = `https://www.chess.com/play/online/new?opponent=${opponent.toLowerCase()}${timeParam}`;
       window.open(gameUrl, '_blank');
       
       // Show instructions
       toast({
         title: 'Game Starting!',
-        description: `Opening chess.com with ${opponent} pre-loaded. Set time control to ${timeControl} and start the game!`,
+        description: `Opening chess.com with ${opponent} pre-loaded and ${timeControl} time control. Start the game!`,
         duration: 15000,
       });
     } else if (platform === 'lichess.org') {

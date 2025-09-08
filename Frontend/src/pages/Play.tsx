@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import Header from '@/components/Header';
 import PlatformSelector from '@/components/PlatformSelector';
+import TimeConfigModal, { TimeConfig } from '@/components/TimeConfigModal';
 import { Crown, Star, Trophy, Brain } from 'lucide-react';
 import { useAuth } from '@/components/contexts/AuthContext';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
@@ -15,6 +16,7 @@ const Play = () => {
   const navigate = useNavigate();
   const [selectedPlayer, setSelectedPlayer] = useState<any>(null);
   const [modalOpen, setModalOpen] = useState(false);
+  const [timeConfigModalOpen, setTimeConfigModalOpen] = useState(false);
   const [suggestedOpponents, setSuggestedOpponents] = useState<any[]>([]);
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
   const [playerRatings, setPlayerRatings] = useState<Record<string, number>>({});
@@ -71,7 +73,48 @@ const Play = () => {
   };
 
   const handleChallenge = () => {
+    setModalOpen(false);
+    setTimeConfigModalOpen(true);
+  };
+
+  // Generate challenge URL with time parameters
+  const generateChallengeUrl = (timeConfig: TimeConfig, opponentUsername: string, platform: 'chess.com' | 'lichess.org') => {
+    const timeInSeconds = timeConfig.timeMinutes * 60;
+    
+    if (platform === 'chess.com') {
+      // Chess.com URL format: https://www.chess.com/play/online/new?opponent=username&time=seconds|increment
+      return `https://www.chess.com/play/online/new?opponent=${opponentUsername}&time=${timeInSeconds}|${timeConfig.incrementSeconds}`;
+    } else {
+      // Lichess URL format: https://lichess.org/@/username?time=${minutes}+${increment}
+      return `https://lichess.org/@/${opponentUsername}?time=${timeConfig.timeMinutes}+${timeConfig.incrementSeconds}`;
+    }
+  };
+
+  const handleTimeConfigConfirm = (timeConfig: TimeConfig) => {
     if (user && selectedPlayer && socketRef?.current) {
+      // Get the opponent's platform username
+      let platform: 'chess.com' | 'lichess.org' = currentPlatform;
+      let opponentUsername = '';
+
+      if (selectedPlayer.chessComUsername && selectedPlayer.lichessUsername) {
+        platform = currentPlatform;
+        opponentUsername = platform === 'chess.com' ? selectedPlayer.chessComUsername : selectedPlayer.lichessUsername;
+      } else if (selectedPlayer.chessComUsername) {
+        platform = 'chess.com';
+        opponentUsername = selectedPlayer.chessComUsername;
+      } else if (selectedPlayer.lichessUsername) {
+        platform = 'lichess.org';
+        opponentUsername = selectedPlayer.lichessUsername;
+      } else {
+        // Fallback to username if no platform-specific username
+        opponentUsername = selectedPlayer.username;
+        platform = currentPlatform;
+      }
+
+      // Generate the challenge URL
+      const challengeUrl = generateChallengeUrl(timeConfig, opponentUsername, platform);
+
+      // Send challenge with time configuration
       socketRef.current.emit('challenge', {
         from: {
           id: user.id,
@@ -83,15 +126,20 @@ const Play = () => {
           username: selectedPlayer.username,
           name: selectedPlayer.name,
         },
-        platform: currentPlatform, // Include the platform information
+        platform: platform,
+        time_control: `${timeConfig.timeMinutes}+${timeConfig.incrementSeconds}`,
+        timeConfig: timeConfig,
+        challengeUrl: challengeUrl,
         timestamp: Date.now(),
       });
+
       toast({
         title: 'Challenge Sent',
-        description: `You challenged ${selectedPlayer.name} on ${currentPlatform}`,
+        description: `You challenged ${selectedPlayer.name} to a ${timeConfig.displayName} game on ${platform === 'chess.com' ? 'Chess.com' : 'Lichess.org'}`,
       });
     }
-    setModalOpen(false);
+    setTimeConfigModalOpen(false);
+    setSelectedPlayer(null);
   };
 
   const handleViewProfile = () => {
@@ -472,6 +520,18 @@ const Play = () => {
             )}
           </DialogContent>
         </Dialog>
+
+        {/* Time Configuration Modal */}
+        <TimeConfigModal
+          isOpen={timeConfigModalOpen}
+          onClose={() => {
+            setTimeConfigModalOpen(false);
+            setSelectedPlayer(null);
+          }}
+          onConfirm={handleTimeConfigConfirm}
+          playerName={selectedPlayer?.name || ''}
+          platform={currentPlatform}
+        />
       </div>
     </div>
   );

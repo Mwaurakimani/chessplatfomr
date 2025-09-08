@@ -122,9 +122,28 @@ export const CountdownModal: React.FC<CountdownModalProps> = ({
     const platform = challenge.platform;
     const opponent = isChallenger ? challenge.opponent.username : challenge.challenger.username;
     
+    // Check if challenge already has a pre-configured URL with time parameters
+    if (challenge.challengeUrl) {
+      return challenge.challengeUrl;
+    }
+    
     if (platform === 'chess.com') {
-      // Use the proper chess.com challenge URL that pre-loads the opponent
-      return `https://www.chess.com/play/online/new?opponent=${opponent.toLowerCase()}`;
+      // Extract time configuration and build URL with time parameters
+      let timeParam = '';
+      if (challenge.timeConfig) {
+        const timeInSeconds = challenge.timeConfig.timeMinutes * 60;
+        timeParam = `&time=${timeInSeconds}|${challenge.timeConfig.incrementSeconds}`;
+      } else if (challenge.time_control) {
+        // Parse time_control format like "5+3" 
+        const [minutes, increment] = challenge.time_control.split('+').map(Number);
+        if (!isNaN(minutes) && !isNaN(increment)) {
+          const timeInSeconds = minutes * 60;
+          timeParam = `&time=${timeInSeconds}|${increment}`;
+        }
+      }
+      
+      // Use the proper chess.com challenge URL that pre-loads the opponent with time control
+      return `https://www.chess.com/play/online/new?opponent=${opponent.toLowerCase()}${timeParam}`;
     } else if (platform === 'lichess.org') {
       // For lichess, use the direct challenge URL with opponent pre-loaded
       return `https://lichess.org/?user=${opponent.toLowerCase()}#friend`;
