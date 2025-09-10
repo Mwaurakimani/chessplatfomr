@@ -23,6 +23,13 @@ interface CountdownModalProps {
     platform: string;
     time_control: string;
     rules: string;
+    challengeUrl?: string;
+    timeConfig?: {
+      category: string;
+      timeMinutes: number;
+      incrementSeconds: number;
+      displayName: string;
+    };
   };
   onGoNow: () => void;
   onPostpone: () => void;

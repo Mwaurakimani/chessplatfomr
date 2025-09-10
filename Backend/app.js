@@ -240,7 +240,11 @@ io.on('connection', (socket) => {
           challengedId: challengeData.opponent,
           redirectedBy,
           redirectedUser,
-          platform
+          platform,
+          // Include time configuration data
+          timeConfig: challengeData.timeConfig || null,
+          challengeUrl: challengeData.challengeUrl || null,
+          time_control: challengeData.time_control || null
         };
 
         console.log(`📡 [${new Date().toISOString()}] Emitting player-redirected to user:`, otherUserId, redirectData);

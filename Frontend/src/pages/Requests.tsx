@@ -134,10 +134,37 @@ const Requests = () => {
         });
       }
       
-      // Use the same logic as startMatch3.html for proper opponent pre-loading
+      // Check if challenge has a pre-configured URL with time parameters
+      if (activeChallenge.challengeUrl) {
+        console.log('🎯 Using pre-configured challenge URL with time controls:', activeChallenge.challengeUrl);
+        window.open(activeChallenge.challengeUrl, '_blank');
+        
+        toast({
+          title: 'Game Starting!',
+          description: `Opening ${platform === 'chess.com' ? 'Chess.com' : 'Lichess.org'} with ${timeControl} time control and ${opponent} pre-loaded.`,
+          duration: 15000,
+        });
+        return;
+      }
+      
+      // Use the same logic as CountdownModal for proper opponent pre-loading with time parameters
       if (platform === 'chess.com') {
-        // Use the proper chess.com challenge URL that pre-loads the opponent
-        const gameUrl = `https://www.chess.com/play/online/new?opponent=${opponent.toLowerCase()}`;
+        // Extract time configuration and build URL with time parameters
+        let timeParam = '';
+        if (activeChallenge.timeConfig) {
+          const timeInSeconds = activeChallenge.timeConfig.timeMinutes * 60;
+          timeParam = `&time=${timeInSeconds}|${activeChallenge.timeConfig.incrementSeconds}`;
+        } else if (activeChallenge.time_control) {
+          // Parse time_control format like "5+3" 
+          const [minutes, increment] = activeChallenge.time_control.split('+').map(Number);
+          if (!isNaN(minutes) && !isNaN(increment)) {
+            const timeInSeconds = minutes * 60;
+            timeParam = `&time=${timeInSeconds}|${increment}`;
+          }
+        }
+        
+        // Use the proper chess.com challenge URL that pre-loads the opponent with time control
+        const gameUrl = `https://www.chess.com/play/online/new?opponent=${opponent.toLowerCase()}${timeParam}`;
         window.open(gameUrl, '_blank');
         
         // Show instructions
