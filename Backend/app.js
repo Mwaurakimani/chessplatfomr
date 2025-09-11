@@ -6,7 +6,8 @@ import cors from 'cors';
 import pool from './config/database.js';
 import Challenge from './models/Challenge.js';
 import OngoingMatch from './models/OngoingMatch.js';
-import MatchResultChecker from './services/MatchResultChecker.js';
+// OLD: import MatchResultChecker from './services/MatchResultChecker.js'; // Replaced by PerMatchResultChecker
+import PerMatchResultChecker from './services/PerMatchResultChecker.js';
 import paymentService from './services/paymentService.js';
 
 import authRoutes from './routes/auth.js';
@@ -317,7 +318,7 @@ io.on('connection', (socket) => {
       // Get challenge data by ID directly with optimized query
       const challengeQuery = await pool.query(`
         SELECT c.id, c.challenger, c.opponent, c.platform, c.status, c.bet_amount, c.challenger_phone, c.opponent_phone,
-               challenger_user.username as challenger_username,
+               c.time_control, challenger_user.username as challenger_username,
                opponent_user.username as opponent_username
         FROM challenges c
         JOIN users challenger_user ON c.challenger = challenger_user.id
@@ -417,6 +418,19 @@ io.on('connection', (socket) => {
                 bothRedirected: updatedMatch.both_redirected,
                 matchStartedAt: updatedMatch.match_started_at
               });
+
+              // 🎯 START PER-MATCH RESULT CHECKING - If both players have redirected
+              if (updatedMatch.both_redirected) {
+                console.log(`🚀 [PER_MATCH_CHECKER] Both players redirected for match ${existingMatch.id}, starting per-match checker`);
+                PerMatchResultChecker.startCheckingMatch({
+                  matchId: existingMatch.id,
+                  timeControl: challengeData.time_control,
+                  startedAt: new Date(),
+                  challenger: challengeData.challenger_username,
+                  opponent: challengeData.opponent_username,
+                  platform: challengeData.platform
+                });
+              }
             } else {
               console.log(`🆕 [${new Date().toISOString()}] Creating new ongoing match for challenge ${challengeId}`);
               
@@ -448,6 +462,19 @@ io.on('connection', (socket) => {
                 bothRedirected: updatedMatch.both_redirected,
                 matchStartedAt: updatedMatch.match_started_at
               });
+
+              // 🎯 START PER-MATCH RESULT CHECKING - If both players have redirected
+              if (updatedMatch.both_redirected) {
+                console.log(`🚀 [PER_MATCH_CHECKER] Both players redirected for new match ${newMatch.id}, starting per-match checker`);
+                PerMatchResultChecker.startCheckingMatch({
+                  matchId: newMatch.id,
+                  timeControl: challengeData.time_control,
+                  startedAt: new Date(),
+                  challenger: challengeData.challenger_username,
+                  opponent: challengeData.opponent_username,
+                  platform: challengeData.platform
+                });
+              }
             }
           } catch (trackingError) {
             console.error(`❌ [${new Date().toISOString()}] Error tracking match:`, trackingError);
@@ -508,6 +535,23 @@ app.use('/api/matchmaking', matchmakingRoutes);
 app.use('/api/match-results', matchResultRoutes);
 app.use('/api/payments', paymentRoutes);
 
+// Per-match checker status endpoint
+app.get('/api/match-checker/status', (req, res) => {
+  try {
+    const status = PerMatchResultChecker.getStatus();
+    res.json({
+      success: true,
+      perMatchChecker: status,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
 // Error handling middleware
 app.use((err, req, res, next) => {
   console.error(err.stack);
@@ -534,10 +578,23 @@ pool.connect((err, client, release) => {
   });
 });
 
+// Cleanup handlers for graceful shutdown
+process.on('SIGINT', () => {
+  console.log('\n🛑 Received SIGINT, cleaning up...');
+  PerMatchResultChecker.cleanup();
+  process.exit(0);
+});
+
+process.on('SIGTERM', () => {
+  console.log('\n🛑 Received SIGTERM, cleaning up...');
+  PerMatchResultChecker.cleanup();
+  process.exit(0);
+});
+
 server.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
   
-  // Initialize match result checker (starts automatically)
-  const matchChecker = new MatchResultChecker(io);
-  console.log('Match result checker initialized and started');
+  // OLD: Initialize match result checker (replaced by PerMatchResultChecker)
+  // const matchChecker = new MatchResultChecker(io);
+  console.log('🎯 Per-match result checking system ready (old backup checker disabled)');
 });

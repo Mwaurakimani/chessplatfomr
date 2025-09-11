@@ -123,7 +123,7 @@ class PaymentService {
         channel: CHANNEL,
         product: PRODUCT,
         event: '',
-        narration: `Chess Nexus bet payment - Game ${numericChallengeId}`,
+        narration: `Get a cheque, mate ${numericChallengeId}`,
         callbackUrl: process.env.ONIT_CALLBACK_URL || "https://chequemate.space/onit/deposit/callback"
       }, {
         headers: {
