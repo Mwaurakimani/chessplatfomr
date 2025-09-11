@@ -7,7 +7,11 @@ class Challenge {
       opponent,
       platform,
       time_control = '10+0',
-      rules = 'chess'
+      rules = 'chess',
+      bet_amount = 0,
+      payment_status = 'none',
+      challenger_phone = null,
+      opponent_phone = null
     } = challengeData;
 
     const query = `
@@ -17,10 +21,14 @@ class Challenge {
         platform,
         time_control,
         rules,
+        bet_amount,
+        payment_status,
+        challenger_phone,
+        opponent_phone,
         status,
         created_at
       )
-      VALUES ($1, $2, $3, $4, $5, 'pending', NOW())
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'pending', NOW())
       RETURNING *;
     `;
 
@@ -29,7 +37,11 @@ class Challenge {
       opponent,
       platform,
       time_control,
-      rules
+      rules,
+      bet_amount,
+      payment_status,
+      challenger_phone,
+      opponent_phone
     ];
 
     try {

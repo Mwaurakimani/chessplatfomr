@@ -3,6 +3,8 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from './AuthContext';
 import { useToast } from '@/hooks/use-toast';
+import paymentService from '../../services/paymentService';
+import debugService from '../../services/debugService';
 
 interface Challenge {
   from: {
@@ -23,12 +25,23 @@ interface Challenge {
   };
   timestamp: number;
   platform?: 'chess.com' | 'lichess.org';
+  time_control?: string;
+  timeConfig?: {
+    category: string;
+    timeMinutes: number;
+    incrementSeconds: number;
+    displayName: string;
+  };
+  paymentDetails?: {
+    phoneNumber: string;
+    amount: number;
+  };
 }
 
 interface ChallengeContextType {
   incomingChallenge: Challenge | null;
   setIncomingChallenge: React.Dispatch<React.SetStateAction<Challenge | null>>;
-  acceptChallenge: () => void;
+  acceptChallenge: (opponentPhoneNumber?: string) => void;
   declineChallenge: () => void;
   acceptedChallenge: Challenge | null;
 }
@@ -51,6 +64,7 @@ export const ChallengeProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const navigate = useNavigate();
 
   const handleChallengeReceived = useCallback((data: Challenge) => {
+    debugService.challengeReceived(data);
     setIncomingChallenge(data);
     toast({
       title: 'Challenge Received',
@@ -61,26 +75,84 @@ export const ChallengeProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   useEffect(() => {
     const socket = socketRef?.current;
     if (socket) {
-      socket.on('challenge-received', handleChallengeReceived);
+      socket.on('newChallenge', handleChallengeReceived);
       return () => {
-        socket.off('challenge-received', handleChallengeReceived);
+        socket.off('newChallenge', handleChallengeReceived);
       };
     }
   }, [socketRef, handleChallengeReceived]);
 
-  const acceptChallenge = () => {
+  const acceptChallenge = async (opponentPhoneNumber?: string) => {
     if (socketRef?.current && incomingChallenge && user) {
-      socketRef.current.emit('challenge-accept', {
-        from: incomingChallenge.from,
-        to: {
-            id: user.id,
-            name: user.name,
-            username: user.username,
-        },
-        timestamp: incomingChallenge.timestamp,
-        platform: user.preferredPlatform,
-      });
-      setIncomingChallenge(null);
+      debugService.challengeAccepted(
+        opponentPhoneNumber || user.phone || 'NO_PHONE',
+        !!(incomingChallenge.paymentDetails && incomingChallenge.paymentDetails.amount > 0)
+      );
+      
+      // If this is a payment challenge, initiate deposits
+      if (incomingChallenge.paymentDetails && incomingChallenge.paymentDetails.amount > 0) {
+        try {
+          // Show loading toast
+          toast({
+            title: 'Processing Payment Challenge',
+            description: 'Setting up deposits for both players...',
+          });
+
+          // Get user's phone number from profile or use provided one
+          const userPhoneNumber = opponentPhoneNumber || user.phone;
+          
+          if (!userPhoneNumber) {
+            throw new Error('Phone number is required for payment challenges');
+          }
+
+          // Emit challenge acceptance first to get challenge ID
+          const acceptanceData = {
+            from: incomingChallenge.from,
+            to: {
+                id: user.id,
+                name: user.name,
+                username: user.username,
+            },
+            timestamp: incomingChallenge.timestamp,
+            platform: user.preferredPlatform,
+            paymentDetails: incomingChallenge.paymentDetails,
+            opponentPhoneNumber: opponentPhoneNumber,
+          };
+          
+          console.log('🎯 [FRONTEND] Emitting challenge-accept:', acceptanceData);
+          socketRef.current.emit('challenge-accept', acceptanceData);
+
+          // Clear incoming challenge immediately
+          setIncomingChallenge(null);
+
+          // TODO: We need to get the challenge ID from the backend
+          // For now, we'll wait for the challenge to be created and then initiate deposits
+          // This will be handled when we implement the deposit flow after challenge creation
+
+        } catch (error) {
+          console.error('Error processing payment challenge:', error);
+          toast({
+            title: 'Payment Error',
+            description: error instanceof Error ? error.message : 'Failed to process payment challenge',
+            variant: 'destructive'
+          });
+        }
+      } else {
+        // Regular challenge without payment
+        socketRef.current.emit('challenge-accept', {
+          from: incomingChallenge.from,
+          to: {
+              id: user.id,
+              name: user.name,
+              username: user.username,
+          },
+          timestamp: incomingChallenge.timestamp,
+          platform: user.preferredPlatform,
+          paymentDetails: incomingChallenge.paymentDetails,
+          opponentPhoneNumber: opponentPhoneNumber,
+        });
+        setIncomingChallenge(null);
+      }
     }
   };
 

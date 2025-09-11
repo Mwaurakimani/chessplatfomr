@@ -7,6 +7,7 @@ import pool from './config/database.js';
 import Challenge from './models/Challenge.js';
 import OngoingMatch from './models/OngoingMatch.js';
 import MatchResultChecker from './services/MatchResultChecker.js';
+import paymentService from './services/paymentService.js';
 
 import authRoutes from './routes/auth.js';
 import challengeRoutes from './routes/challengeRoutes.js';
@@ -14,6 +15,7 @@ import gameRoutes from './routes/gameRoutes.js';
 import userRoutes from './routes/userRoutes.js';
 import matchmakingRoutes from './routes/matchmaking.js';
 import matchResultRoutes from './routes/matchResultRoutes.js';
+import paymentRoutes from './routes/paymentRoutes.js';
 
 dotenv.config();
 
@@ -62,14 +64,26 @@ io.on('connection', (socket) => {
         timeControl = `${data.timeConfig.timeMinutes}+${data.timeConfig.incrementSeconds}`;
       }
       
-      // Create challenge in database
-      const challenge = await Challenge.create({
+      // Create challenge in database with payment details
+      const challengeData = {
         challenger: from.id,
         opponent: to.id,
         platform: data.platform || 'chess.com', // Default to chess.com if not provided
         time_control: timeControl,
         rules: data.rules || 'chess'
-      });
+      };
+
+        // Add payment details if present
+        if (data.paymentDetails && data.paymentDetails.amount > 0) {
+          challengeData.bet_amount = data.paymentDetails.amount;
+          challengeData.payment_status = 'pending';
+          challengeData.challenger_phone = data.paymentDetails.phoneNumber;
+          console.log(`💰 [CHALLENGE] Payment challenge created:`, {
+            amount: data.paymentDetails.amount,
+            challengerPhone: data.paymentDetails.phoneNumber,
+            challengeId: 'will be generated'
+          });
+        }      const challenge = await Challenge.create(challengeData);
 
       // Format challenge object to match frontend expectations
       const challengeForFrontend = {
@@ -93,7 +107,8 @@ io.on('connection', (socket) => {
         createdAt: challenge.created_at,
         // Pass through additional time configuration data for frontend
         timeConfig: data.timeConfig,
-        challengeUrl: data.challengeUrl
+        challengeUrl: data.challengeUrl,
+        paymentDetails: data.paymentDetails
       };
 
       // Emit to the opponent that they have a new challenge
@@ -110,8 +125,102 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Challenge acceptance is now handled via REST API in challengeController
-  // This eliminates duplicate handling and potential confusion
+  // Handle challenge acceptance via socket
+  socket.on('challenge-accept', async (data) => {
+    try {
+      console.log(`🎯 [SOCKET] Challenge acceptance received:`, data);
+      
+      // Find the challenge in the database based on the participants and timestamp
+      const challengeQuery = await pool.query(`
+        SELECT c.*, 
+               challenger_user.username as challenger_username, challenger_user.phone as challenger_phone,
+               opponent_user.username as opponent_username, opponent_user.phone as opponent_phone
+        FROM challenges c
+        JOIN users challenger_user ON c.challenger = challenger_user.id
+        JOIN users opponent_user ON c.opponent = opponent_user.id
+        WHERE c.challenger = $1 AND c.opponent = $2 AND c.status = 'pending'
+        ORDER BY c.created_at DESC
+        LIMIT 1
+      `, [data.from.id, data.to.id]);
+
+      if (challengeQuery.rows.length === 0) {
+        console.error(`❌ [SOCKET] No pending challenge found between users ${data.from.id} and ${data.to.id}`);
+        return;
+      }
+
+      const challenge = challengeQuery.rows[0];
+      console.log(`📋 [SOCKET] Found challenge:`, {
+        id: challenge.id,
+        bet_amount: challenge.bet_amount,
+        payment_status: challenge.payment_status,
+        challenger_phone: challenge.challenger_phone,
+        opponent_phone: challenge.opponent_phone
+      });
+
+      // Update challenge status to accepted and save opponent phone
+      console.log(`🔧 [CHALLENGE_ACCEPT] Debug phone number logic:`, {
+        providedOpponentPhone: data.opponentPhoneNumber,
+        challengeOpponentPhone: challenge.opponent_phone,
+        challengeBetAmount: challenge.bet_amount,
+        challengeId: challenge.id
+      });
+      
+      let opponentPhoneToSave = data.opponentPhoneNumber || challenge.opponent_phone;
+      
+      console.log(`� [CHALLENGE_ACCEPT] Opponent phone to save: ${opponentPhoneToSave}`);
+      
+      if (opponentPhoneToSave) {
+        console.log(`🔧 [CHALLENGE_ACCEPT] Executing UPDATE query with phone: ${opponentPhoneToSave}, challengeId: ${challenge.id}`);
+        const updateResult = await pool.query(
+          'UPDATE challenges SET status = $1, opponent_phone = $2 WHERE id = $3 RETURNING *',
+          ['accepted', opponentPhoneToSave, challenge.id]
+        );
+        console.log(`📱 [CHALLENGE_ACCEPT] UPDATE result:`, updateResult.rows[0]);
+        console.log(`📱 [CHALLENGE_ACCEPT] Saved opponent phone number: ${opponentPhoneToSave}`);
+      } else {
+        await pool.query('UPDATE challenges SET status = $1 WHERE id = $2', ['accepted', challenge.id]);
+        console.log(`⚠️  [CHALLENGE_ACCEPT] No opponent phone number available for payment challenge!`);
+      }
+
+      // If this is a payment challenge, initiate deposits
+      if (challenge.bet_amount && challenge.bet_amount > 0) {
+        console.log(`💳 [SOCKET] Processing payment challenge with amount: ${challenge.bet_amount}`);
+        
+        // Get phone numbers - prioritize challenger_phone from database
+        const challengerPhone = challenge.challenger_phone || data.paymentDetails?.phoneNumber;
+        const opponentPhone = challenge.opponent_phone || data.opponentPhoneNumber;
+
+        console.log(`📞 [SOCKET] Phone numbers:`, {
+          challengerPhone,
+          opponentPhone,
+          challengerPhoneFromDB: challenge.challenger_phone,
+          opponentPhoneFromDB: challenge.opponent_phone,
+          fromPaymentDetails: data.paymentDetails?.phoneNumber,
+          fromSocketOpponent: data.opponentPhoneNumber
+        });
+
+        // Note: Payment initiation has been moved to the game-redirect handler
+        // This ensures payments are only triggered when players actually start playing
+        console.log(`💡 [SOCKET] Payment initiation will occur when players redirect to chess platform`);
+      }
+
+      // Emit to the challenger that challenge was accepted
+      const notificationData = {
+        challengeId: challenge.id,
+        challengerId: challenge.challenger,
+        challengerUsername: challenge.challenger_username,
+        accepterUsername: challenge.opponent_username,
+        hasPayment: challenge.bet_amount > 0,
+        paymentAmount: challenge.bet_amount
+      };
+      
+      console.log(`📡 [SOCKET] Emitting challengeAccepted to challenger:`, data.from.id);
+      io.to(data.from.id.toString()).emit('challengeAccepted', notificationData);
+
+    } catch (error) {
+      console.error(`❌ [SOCKET] Error handling challenge acceptance:`, error);
+    }
+  });
 
   socket.on('challenge-decline', async (data) => {
     try {
@@ -207,7 +316,7 @@ io.on('connection', (socket) => {
       
       // Get challenge data by ID directly with optimized query
       const challengeQuery = await pool.query(`
-        SELECT c.id, c.challenger, c.opponent, c.platform, c.status,
+        SELECT c.id, c.challenger, c.opponent, c.platform, c.status, c.bet_amount, c.challenger_phone, c.opponent_phone,
                challenger_user.username as challenger_username,
                opponent_user.username as opponent_username
         FROM challenges c
@@ -226,13 +335,51 @@ io.on('connection', (socket) => {
           opponentId: challengeData.opponent,
           opponentUsername: challengeData.opponent_username,
           platform: challengeData.platform,
-          status: challengeData.status
+          status: challengeData.status,
+          betAmount: challengeData.bet_amount,
+          challengerPhone: challengeData.challenger_phone,
+          opponentPhone: challengeData.opponent_phone,
+          allFields: Object.keys(challengeData)
         });
         
         const redirectedUser = redirectedBy === challengeData.challenger ? challengeData.challenger_username : challengeData.opponent_username;
         const otherUserId = redirectedBy === challengeData.challenger ? challengeData.opponent : challengeData.challenger;
+        const isChallenger = redirectedBy === challengeData.challenger;
         
         console.log(`👤 [${new Date().toISOString()}] User ${redirectedUser} (ID: ${redirectedBy}) redirected to ${platform}`);
+
+        // 💰 CRITICAL: Initiate payment when player redirects to chess.com
+        if (challengeData.bet_amount > 0) {
+          if (isChallenger && challengeData.challenger_phone) {
+            console.log(`💰 Initiating deposit for challenger: ${challengeData.challenger_phone}, amount: ${challengeData.bet_amount}`);
+            try {
+              const paymentResult = await paymentService.initiateDeposit(
+                challengeData.challenger_phone, 
+                challengeData.bet_amount,
+                challengeData.challenger,
+                challengeData.id
+              );
+              console.log(`💰 Challenger payment initiation result:`, paymentResult.success ? 'SUCCESS' : 'FAILED', paymentResult.error || '');
+            } catch (paymentError) {
+              console.error(`❌ Challenger payment initiation error:`, paymentError);
+            }
+          }
+          
+          if (!isChallenger && challengeData.opponent_phone) {
+            console.log(`💰 Initiating deposit for opponent: ${challengeData.opponent_phone}, amount: ${challengeData.bet_amount}`);
+            try {
+              const paymentResult = await paymentService.initiateDeposit(
+                challengeData.opponent_phone, 
+                challengeData.bet_amount,
+                challengeData.opponent,
+                challengeData.id
+              );
+              console.log(`💰 Opponent payment initiation result:`, paymentResult.success ? 'SUCCESS' : 'FAILED', paymentResult.error || '');
+            } catch (paymentError) {
+              console.error(`❌ Opponent payment initiation error:`, paymentError);
+            }
+          }
+        }
         
         const redirectData = {
           challengeId,
@@ -260,7 +407,6 @@ io.on('connection', (socket) => {
             if (existingMatch) {
               console.log(`🔄 [${new Date().toISOString()}] Found existing ongoing match ${existingMatch.id} for challenge ${challengeId}`);
               
-              const isChallenger = redirectedBy === challengeData.challenger;
               console.log(`🎯 [${new Date().toISOString()}] User ${redirectedUser} is ${isChallenger ? 'challenger' : 'opponent'}`);
               
               const updatedMatch = await OngoingMatch.updateRedirection(challengeId, redirectedBy, isChallenger);
@@ -292,7 +438,6 @@ io.on('connection', (socket) => {
                 platform: newMatch.platform
               });
               
-              const isChallenger = redirectedBy === challengeData.challenger;
               console.log(`🎯 [${new Date().toISOString()}] User ${redirectedUser} is ${isChallenger ? 'challenger' : 'opponent'}`);
               
               const updatedMatch = await OngoingMatch.updateRedirection(challengeId, redirectedBy, isChallenger);
@@ -361,6 +506,7 @@ app.use('/api/games', gameRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/matchmaking', matchmakingRoutes);
 app.use('/api/match-results', matchResultRoutes);
+app.use('/api/payments', paymentRoutes);
 
 // Error handling middleware
 app.use((err, req, res, next) => {

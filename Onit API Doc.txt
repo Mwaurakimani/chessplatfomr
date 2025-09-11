@@ -1,0 +1,529 @@
+Onit Integration (Node.js)
+Deposits, Withdrawals, Auth &
+Callbacks
+Overview
+
+Auth: Bearer token (acquired from Onit auth endpoint). Cache + refresh
+before expiry.
+:
+Deposit: POST /api/v1/transaction/deposit
+:
+Withdraw: POST /api/v1/transaction/withdraw
+:
+Callbacks/Webhooks: Onit calls your HTTPS endpoints with transaction
+status updates.
+:
+Idempotency: Your originatorRequestId should be globally unique per
+transaction. Reuse on retries.
+Note: Exact field names/values below match the
+PHP/Postman snippets you shared. Where Onit's docs
+differ, prefer their spec; I've noted where assumptions
+are made.
+1) Project Setup
+mkdir onit-integration && cd onit-integration
+npm init -y
+npm i express axios joi pino pino-pretty dotenv helmet cors dayjs
+npm i -D typescript ts-node @types/express @types/node nodemon
+npx tsc init
+File structure (suggested):
+src/
+server.ts
+config.ts
+onit/
+client.ts
+service.ts
+webhook.ts
+#axios client
+auth
+#deposit/withdraw wrappers
+#callback handlers/validation
+routes/
+payments.ts
+#your REST endpoints
+db/
+transactions.ts
+#persistence (stub or real DB)
+utils/
+id.ts
+#reference/id helpers
+.env
+.env
+package.json
+NODE_ENV=development
+PORT=8080
+# Onit
+ONIT_BASE_URL=https://api.onitmfbank.com/api/v1
+ONIT_AUTH_URL=
+ONIT_CLIENT_ID=
+ONIT_CLIENT_SECRET=
+ONIT_BEARER_TOKEN=
+here
+#if different from base; else leave blank
+#if Onit uses OAuth client creds (example)
+#if you're issued a static token, put it
+#
+ONIT_ACCOUNT=0001650000001
+# Your app
+PUBLIC_BASE_URL=https://your.domain
+ONIT_DEPOSIT_CALLBACK=/api/onit/deposit/response
+ONIT_WITHDRAW_CALLBACK=/api/onit/withdraw/response
+If Onit gives you a static Bearer token, set ONIT_BEARER_TOKEN.
+If they use OAuth, add the token exchange in client.ts
+and ignore the static variable.
+2) Config & Logger
+//src/config.ts
+import 'dotenv/config';
+export const config = {
+env: process.env.NODE_ENV ?? 'development',
+port: Number(process.env.PORT ?? 8080),
+onit: {
+},
+baseUrl: process.env.ONIT_BASE_URL!,
+authUrl: process.env.ONIT_AUTH_URL || process.env.ONIT_BASE_URL!,
+account: process.env.ONIT_ACCOUNT!,
+staticBearer: process.env.ONIT_BEARER_TOKEN
+app: {
+baseUrl: process.env.PUBLIC_BASE_URL!,
+depositCb: process.env.ONIT_DEPOSIT_CALLBACK!,
+withdrawCb: process.env.ONIT_WITHDRAW_CALLBACK!,
+null,
+}
+};
+//src/utils/logger.ts
+import pino from 'pino';
+export const logger = pino({
+});
+transport: { target: 'pino-pretty' },
+level: process.env.NODE_ENV === 'production' ? 'info' : 'debug',
+3) Auth: Getting & Using the Bearer Token
+There are two common patterns:
+1.
+Static token (simplest): use as-is in Authorization: Bearer <token>.
+2.
+3.
+Short-lived token (OAuth 2 Client Credentials): fetch, cache, refresh.
+4.
+Below supports both. If you only have a static token, it'll just use it.
+// src/onit/client.ts
+import axios from 'axios';
+import dayjs from 'dayjs';
+import { config } from '../config';
+import { logger } from '../utils/logger';
+let cachedToken: { token: string, expiresAt?: number } | null = null;
+async function fetchOAuthToken(): Promise<{token: string, expiresAt?: number}> {
+// Example only. Replace with Onit's actual auth route/payload.
+const url = `${config.onit.authUrl}/oauth/token`;
+const payload = {
+};
+grant_type: 'client_credentials',
+client_id: process.env.ONIT_CLIENT_ID,
+client_secret: process.env.ONIT_CLIENT_SECRET,
+const { data } = await axios.post(url, payload, {
+headers: { 'Content-Type': 'application/json' }
+});
+const token = data.access_token as string;
+const expiresIn = Number(data.expires_in ?? 3300); // seconds
+const expiresAt = dayjs().add(expiresIn - 60, 'seconds').unix(); // refresh 1 min early
+return { token, expiresAt };
+}
+async function getBearerToken(): Promise<string> {
+}
+if (config.onit.staticBearer) return config.onit.staticBearer;
+if (cachedToken?.token && cachedToken.expiresAt && dayjs().unix() < cachedToken.expiresAt) {
+}
+return cachedToken.token;
+cachedToken = await fetchOAuthToken();
+logger.debug({ cachedToken }, 'Fetched new OAuth token');
+return cachedToken.token;
+export async function onitClient() {
+const token = await getBearerToken();
+const instance = axios.create({
+baseURL: config.onit.baseUrl,
+timeout: 30_000,
+headers: {
+},
+'Content-Type': 'application/json',
+'Authorization': `Bearer ${token}`,
+});
+// If OAuth token can expire mid-flight, optionally intercept 401 and refresh.
+{
+instance.interceptors.response.use(undefined, async (error) => {
+if (error.response?.status === 401 && !config.onit.staticBearer) {
+logger.warn('401 from Onit - refreshing token and retrying once');
+cachedToken = await fetchOAuthToken();
+error.config.headers['Authorization'] = `Bearer ${cachedToken.token}`;
+return axios.request(error.config);
+}
+return Promise.reject(error);
+});
+}
+return instance;
+4) Data Model (Minimal)
+You need to store transaction state and correlate callbacks.
+//src/db/transactions.ts
+export type TxStatus = 'pending' | 'processing' | 'success' | 'failed';
+export interface Transaction {
+id: string; // your UUID
+onitReference: string; // your originatorRequestId
+direction: 'deposit' | 'withdraw';
+amount: number;
+sourceAccount?: string;
+destinationAccount?: string;
+channel: 'MPESA' | string;
+product: string; // CA05 deposit, CA04 withdraw
+narration?: string;
+status: TxStatus;
+rawOnitResponse?: any;
+createdAt: string;
+updatedAt: string;
+}
+const mem = new Map<string, Transaction>();
+export const Transactions = {
+async create(tx: Transaction) { mem.set(tx.id, tx); return tx; },
+async update(id: string, patch: Partial<Transaction>) {
+const cur = mem.get(id); if (!cur) throw new Error('Not found');
+const next = {...cur, ...patch, updatedAt: new Date().toISOString()};
+},
+mem.set(id, next); return next;
+async findByOnitRef(onitReference: string) {
+for (const t of mem.values()) if (t.onitReference === onitReference) return t;
+return null;
+},
+};
+5) Service Layer (Deposit & Withdraw)
+Matches your PHP and Postman examples.
+//src/onit/service.ts
+import { onitClient } from './client';
+import { config } from '../config';
+import { Transactions } from '../db/transactions';
+import { v4 as uuid } from 'uuid';
+function uniqueRef(prefix: string) {
+// Similar to 'ONIT-WD-' + uniqid(): globally unique and traceable.
+return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+}
+export async function createDeposit(params: {
+amount: number;
+sourceAccount: string; // payer's account (e.g., MSISDN)
+narration?: string;
+}) {
+const onitReference = uniqueRef('ONIT-DEP');
+const id = uuid();
+const callbackUrl = `${config.app.baseUrl}${config.app.depositCb}`.replace(/^http:/i, 'https:');
+const payload = {
+originatorRequestId: onitReference,
+destinationAccount: config.onit.account, // your account at Onit
+sourceAccount: params.sourceAccount,
+amount: params.amount,
+};
+channel: 'MPESA',
+product: 'CA05',
+event: '', // left blank to mirror your PHP
+narration: params.narration ?? 'Deposit via Onit',
+callbackUrl,
+await Transactions.create({
+});
+id,
+onitReference,
+direction: 'deposit',
+amount: params.amount,
+sourceAccount: params.sourceAccount,
+destinationAccount: config.onit.account,
+channel: 'MPESA',
+product: 'CA05',
+narration: payload.narration,
+status: 'pending',
+rawOnitResponse: null,
+createdAt: new Date().toISOString(),
+updatedAt: new Date().toISOString(),
+const client = await onitClient();
+const { data } = await client.post('/transaction/deposit', payload);
+await Transactions.update(id, { rawOnitResponse: data, status: 'processing' });
+}
+return { id, onitReference, payload, onitResponse: data };
+export async function createWithdrawal(params: {
+amount: number;
+sourceAccount: string; // your source account at Onit
+destinationAccount: string; // recipient MSISDN
+narration?: string;
+}) {
+const onitReference = uniqueRef('ONIT-WD');
+const id = uuid();
+const callbackUrl = `${config.app.baseUrl}${config.app.withdrawCb}`.replace(/^http:/i, 'https:');
+const payload = {
+};
+originatorRequestId: onitReference,
+sourceAccount: params.sourceAccount,
+destinationAccount: params.destinationAccount,
+amount: params.amount,
+channel: 'MPESA',
+channelType: 'MOBILE',
+product: 'CA04',
+narration: params.narration ?? 'Withdrawal via Onit',
+callbackUrl,
+await Transactions.create({
+id,
+onitReference,
+direction: 'withdraw',
+});
+amount: params.amount,
+sourceAccount: params.sourceAccount,
+destinationAccount: params.destinationAccount,
+channel: 'MPESA',
+product: 'CA04',
+narration: payload.narration,
+status: 'pending',
+rawOnitResponse: null,
+createdAt: new Date().toISOString(),
+updatedAt: new Date().toISOString(),
+const client = await onitClient();
+const { data } = await client.post('/transaction/withdraw', payload);
+await Transactions.update(id, { rawOnitResponse: data, status: 'processing' });
+}
+return { id, onitReference, payload, onitResponse: data };
+6) Express Routes (Public API)
+With validation via joi.
+//src/routes/payments.ts
+import { Router } from 'express';
+import Joi from 'joi';
+import { createDeposit, createWithdrawal } from '../onit/service';
+const r = Router();
+const depositSchema = Joi.object({
+amount: Joi.number().min(1).required(),
+sourceAccount: Joi.string().required(), //e.g., MSISDN or wallet id
+narration: Joi.string().optional(),
+});
+const withdrawSchema = Joi.object({
+});
+amount: Joi.number().min(1).required(),
+sourceAccount: Joi.string().required(), // your Onit account
+destinationAccount: Joi.string().required(), // target MSISDN
+narration: Joi.string().optional(),
+r.post('/deposit', async (req, res, next) => {
+try {
+const { value, error } = depositSchema.validate(req.body);
+if (error) return res.status(422).json({ error: error.details.map(d => d.message).join(', ') });
+const result = await createDeposit(value);
+});
+res.json(result);
+} catch (e) { next(e); }
+r.post('/withdraw', async (req, res, next) => {
+try {
+const { value, error } = withdrawSchema.validate(req.body);
+if (error) return res.status(422).json({ error: error.details.map(d => d.message).join(', ') });
+const result = await createWithdrawal(value);
+res.json(result);
+} catch (e) { next(e); }
+});
+export default r;
+7) Callback (Webhook) Handlers
+Onit will call your HTTPS endpoints with final/updated status. The exact payload
+format is vendor-specific. Below is a typical shape:
+}
+{
+"originatorRequestId": "ONIT-DEP-...",
+"status": "SUCCESS", // or FAILED/PENDING
+"transactionId": "provider-ref",
+"amount": 110,
+"message": "Processed",
+"timestamp": "2025-08-28T12:34:56Z",
+"raw": { /* provider extras */ }
+}
+If Onit includes a signature header (e.g., X-Signature) or HMAC-verify it.
+If not, use IP allow-listing with your reverse proxy or include a secret in the callback
+URL query, e.g....?k=your-secret.
+// src/onit/webhook.ts
+import type { Request, Response } from 'express';
+import { Transactions } from '../db/transactions';
+import { logger } from '../utils/logger';
+function mapStatus(s: string) {
+}
+const v = s.toLowerCase();
+if (v.includes('success')) return 'success';
+if (v.includes('fail')) return 'failed';
+if (v.includes('pend')) return 'processing';
+return 'processing';
+export async function handleDepositCallback(req: Request, res: Response) {
+try {
+// Optional: verify signature/IP/secret
+// const signature = req.header('X-Signature');
+// verifyHmac(signature, req.rawBody)
+const payload = req.body;
+const onitRef = payload.originatorRequestId;
+if (!onitRef) return res.status(400).json({ error: 'Missing originatorRequestId' });
+const tx = await Transactions.findByOnitRef(onitRef);
+if (!tx) {
+// Idempotent response: 200 OK so Onit doesn't keep retrying forever
+logger.warn({ onitRef, payload }, 'Callback for unknown transaction');
+}
+return res.status(200).json({ok: true });
+const status = mapStatus(payload.status ?? 'PROCESSING');
+await Transactions.update(tx.id, { status, rawOnitResponse: payload });
+return res.json({ ok: true });
+} catch (e) {
+logger.error(e, 'Error in deposit callback');
+// Return 500 to let Onit retry, if they support retries.
+return res.status(500).json({ error: 'Internal error' });
+}
+}
+export async function handleWithdrawCallback(req: Request, res: Response) {
+try {
+const payload = req.body;
+const onitRef = payload.originatorRequestId;
+if (!onitRef) return res.status(400).json({ error: 'Missing originatorRequestId' });
+const tx = await Transactions.findByOnitRef(onitRef);
+if (!tx) {
+return res.status(200).json({ ok: true });
+}
+const status = mapStatus(payload.status ?? 'PROCESSING');
+await Transactions.update(tx.id, { status, rawOnitResponse: payload });
+return res.json({ ok: true });
+} catch (e) {
+return res.status(500).json({ error: 'Internal error' });
+}
+}
+Routes:
+// src/server.ts
+import express from 'express';
+import helmet from 'helmet';
+import cors from 'cors';
+import { config } from './config';
+import payments from './routes/payments';
+import { handleDepositCallback, handleWithdrawCallback } from './onit/webhook';
+import {
+app.use(cors());
+app.use('/api/payments', payments);
+// Webhooks (callbacks)
+app.post('/api/onit/deposit/response', handleDepositCallback);
+app.post('/api/onit/withdraw/response', handleWithdrawCallback);
+// Generic error handler
+app.use((err: any, _req: any, res: any, _next: any) => {
+logger.error(err);
+res.status(500).json({ error: 'Internal server error' });
+});
+app.listen(config.port, () => {
+logger.info(`Server listening on :${config.port}`);
+});
+8) Mapping to Your PHP/Postman Examples
+
+Deposit (PHP/Laravel you showed):
+
+o Endpoint: /transaction/deposit
+o
+o Fields: originatorRequestId, destinationAccount (your Onit account), sourceAccount (payer), amount, channel: "MPESA", product: "CA05", event: "", narration, callbackUrl.
+o
+o Callback route: onit.deposit.callback → here /api/onit/deposit/response
+o
+
+Withdraw (Postman you showed):
+
+o Endpoint: /transaction/withdraw
+o
+o Fields: originatorRequestId, sourceAccount (your account), destinationAccount (MSISDN), amount, channel: "MPESA", channelType: "MOBILE", product: "CA04", narration, callbackUrl.
+o
+o Callback route: here /api/onit/withdraw/response
+o
+This Node code mirrors those shapes exactly.
+9) Idempotency, Retries & Timeouts
+
+Generate a unique originatorRequestId (we used ONIT-DEP-<timestamp>-<rand>).
+
+ If your request times out or you get a transient error, retry with the same originatorRequestId.
+Your server should treat duplicates as the same transaction.
+
+
+On callbacks, store and check incoming status;
+ignore duplicates (return 200 OK each time).
+
+10) Security Checklist
+
+HTTPS for your callbacks (callbackUrl is forced to https in examples).
+
+ If Onit provides a webhook signature (HMAC), verify it using the raw request body and shared secret.
+If they don’t:
+
+o Put a secret token in the callback URL query (?k=...) and verify it server-side, and
+o
+o Restrict by source IP at your reverse proxy if possible.
+o
+
+Keep tokens in environment variables, not in code.
+
+
+Log transaction IDs, never full PANs or sensitive data.
+
+11) Testing & Tooling
+
+Use Postman or Insomnia to hit your /api/payments/deposit and /api/payments/withdraw.
+
+
+Simulate callbacks: curl -X POST https://your.domain/api/onit/deposit/response -H 'Content-Type: application/json' -d '{ "originatorRequestId": "ONIT-DEP-...", "status": "SUCCESS" }'
+
+
+Add unit tests around service layer if you care about sleep.
+
+12) Common Pitfalls (so you don’t DM me at 1am)
+
+401 from Onit: Token expired → refresh (see interceptor).
+
+
+Callbacks not arriving: Your URL must be public and HTTPS; also confirm you sent the correct callbackUrl in the request payload.
+
+
+Double charges / duplicates: Reuse the same originatorRequestId on retries; treat as idempotent.
+
+
+MPesa numbers: Use correct format (usually 2547XXXXXXXX). Validate at your edge.
+
+13) Tiny TypeScript Interfaces (Optional)
+export interface OnitDepositRequest {
+originatorRequestId: string;
+destinationAccount: string;
+sourceAccount: string;
+amount: number;
+channel: 'MPESA' | string;
+product: 'CA05' | string;
+event?: string;
+narration?: string;
+callbackUrl: string;
+}
+export interface OnitWithdrawRequest {
+originatorRequestId: string;
+sourceAccount: string;
+destinationAccount: string;
+amount: number;
+channel: 'MPESA' | string;
+channelType: 'MOBILE' | string;
+product: 'CA04' | string;
+narration?: string;
+callbackUrl: string;
+}
+14) Example Requests (curl)
+Deposit
+curl -X POST http://localhost:8080/api/payments/deposit \
+-H "Content-Type: application/json" \
+-d '{
+"amount": 110,
+"sourceAccount": "254719445697",
+"narration": "Top-up"
+}'
+Withdraw
+curl -X POST http://localhost:8080/api/payments/withdraw \
+-H "Content-Type: application/json" \
+-d '{
+"amount": 110,
+"sourceAccount": "0001650000001",
+"destinationAccount": "254719445697",
+"narration": "Payout"
+}'
+15) Going to Production
+
+Enable observability (structured logs + error monitoring).
+
+
+Put the service behind NGINX/API Gateway with IP allow-listing for callbacks.
+
+
+Back your in-memory store with a real DB (Postgres/MySQL/Redis).
+
+
+Rotate secrets. Don’t paste tokens in Git. I know you were about to.

@@ -15,12 +15,13 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
-import { Clock, Zap, Timer, CalendarDays, Settings } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Clock, Zap, Timer, CalendarDays, Settings, DollarSign, Phone } from 'lucide-react';
 
 interface TimeConfigModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onConfirm: (timeConfig: TimeConfig) => void;
+  onConfirm: (timeConfig: TimeConfig, paymentDetails: PaymentDetails) => void;
   playerName: string;
   platform: 'chess.com' | 'lichess.org';
 }
@@ -30,6 +31,11 @@ export interface TimeConfig {
   timeMinutes: number;
   incrementSeconds: number;
   displayName: string;
+}
+
+export interface PaymentDetails {
+  phoneNumber: string;
+  amount: number;
 }
 
 const TimeConfigModal: React.FC<TimeConfigModalProps> = ({
@@ -43,6 +49,10 @@ const TimeConfigModal: React.FC<TimeConfigModalProps> = ({
   const [selectedTimeControl, setSelectedTimeControl] = useState<string>('');
   const [customTime, setCustomTime] = useState<number>(10);
   const [customIncrement, setCustomIncrement] = useState<number>(0);
+  
+  // Payment state
+  const [phoneNumber, setPhoneNumber] = useState<string>('');
+  const [amount, setAmount] = useState<number>(10);
 
   // Define time control options for each category
   const timeControls = {
@@ -85,6 +95,8 @@ const TimeConfigModal: React.FC<TimeConfigModalProps> = ({
       setSelectedTimeControl('5+3');
       setCustomTime(10);
       setCustomIncrement(0);
+      setPhoneNumber('');
+      setAmount(10);
     }
   }, [isOpen]);
 
@@ -131,7 +143,11 @@ const TimeConfigModal: React.FC<TimeConfigModalProps> = ({
 
   const handleConfirm = () => {
     const timeConfig = getCurrentTimeControl();
-    onConfirm(timeConfig);
+    const paymentDetails: PaymentDetails = {
+      phoneNumber,
+      amount
+    };
+    onConfirm(timeConfig, paymentDetails);
   };
 
   const currentTimeControl = getCurrentTimeControl();
@@ -275,6 +291,52 @@ const TimeConfigModal: React.FC<TimeConfigModalProps> = ({
               Platform: <span className="font-medium">{platform === 'chess.com' ? 'Chess.com' : 'Lichess.org'}</span>
             </div>
           </div>
+
+          {/* Payment Details */}
+          <div className="space-y-4 border-t pt-4">
+            <div className="flex items-center gap-2 mb-2">
+              <DollarSign size={16} className="text-green-500" />
+              <span className="font-medium text-sm">Payment Details</span>
+            </div>
+            
+            <div className="space-y-3">
+              <div className="space-y-2">
+                <label className="text-sm font-medium flex items-center gap-2">
+                  <Phone size={14} />
+                  Phone Number
+                </label>
+                <Input
+                  type="tel"
+                  placeholder="Enter your phone number"
+                  value={phoneNumber}
+                  onChange={(e) => setPhoneNumber(e.target.value)}
+                  className="w-full"
+                />
+              </div>
+              
+              <div className="space-y-2">
+                <label className="text-sm font-medium flex items-center gap-2">
+                  <DollarSign size={14} />
+                  Amount (KES)
+                </label>
+                <Input
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={amount}
+                  onChange={(e) => setAmount(Number(e.target.value))}
+                  className="w-full"
+                />
+              </div>
+            </div>
+            
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-800">
+              <div className="font-medium mb-1">Payment Info:</div>
+              <div>• Both players will deposit KES {amount} before the game starts</div>
+              <div>• Winner takes the full amount ({amount * 2} KES)</div>
+              <div>• In case of a draw, both players get refunded</div>
+            </div>
+          </div>
         </div>
 
         <DialogFooter className="gap-3">
@@ -287,7 +349,8 @@ const TimeConfigModal: React.FC<TimeConfigModalProps> = ({
           </Button>
           <Button 
             onClick={handleConfirm}
-            className="bg-green-600 hover:bg-green-700 text-white border-0"
+            disabled={!phoneNumber.trim() || amount < 1}
+            className="bg-green-600 hover:bg-green-700 text-white border-0 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Send Challenge
           </Button>

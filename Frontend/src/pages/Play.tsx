@@ -2,7 +2,9 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import Header from '@/components/Header';
 import PlatformSelector from '@/components/PlatformSelector';
-import TimeConfigModal, { TimeConfig } from '@/components/TimeConfigModal';
+import TimeConfigModal, { TimeConfig, PaymentDetails } from '@/components/TimeConfigModal';
+import debugService from '@/services/debugService';
+import DebugConsole from '@/components/DebugConsole';
 import { Crown, Star, Trophy, Brain } from 'lucide-react';
 import { useAuth } from '@/components/contexts/AuthContext';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
@@ -90,7 +92,9 @@ const Play = () => {
     }
   };
 
-  const handleTimeConfigConfirm = (timeConfig: TimeConfig) => {
+  const handleTimeConfigConfirm = (timeConfig: TimeConfig, paymentDetails: PaymentDetails) => {
+    debugService.challengeCreated(timeConfig, paymentDetails);
+    
     if (user && selectedPlayer && socketRef?.current) {
       // Get the opponent's platform username
       let platform: 'chess.com' | 'lichess.org' = currentPlatform;
@@ -114,7 +118,7 @@ const Play = () => {
       // Generate the challenge URL
       const challengeUrl = generateChallengeUrl(timeConfig, opponentUsername, platform);
 
-      // Send challenge with time configuration
+      // Send challenge with time configuration and payment details
       socketRef.current.emit('challenge', {
         from: {
           id: user.id,
@@ -130,6 +134,7 @@ const Play = () => {
         time_control: `${timeConfig.timeMinutes}+${timeConfig.incrementSeconds}`,
         timeConfig: timeConfig,
         challengeUrl: challengeUrl,
+        paymentDetails: paymentDetails,
         timestamp: Date.now(),
       });
 
@@ -532,6 +537,9 @@ const Play = () => {
           playerName={selectedPlayer?.name || ''}
           platform={currentPlatform}
         />
+        
+        {/* Debug Console */}
+        <DebugConsole />
       </div>
     </div>
   );

@@ -2,6 +2,7 @@ import https from 'https';
 import OngoingMatch from '../models/OngoingMatch.js';
 import User from '../models/User.js';
 import pool from '../config/database.js';
+import paymentController from '../controllers/paymentController.js';
 
 class MatchResultChecker {
   constructor(io) {
@@ -446,6 +447,10 @@ class MatchResultChecker {
         console.log(`📢 [${new Date().toISOString()}] Victory notification sent to user ${winnerId} for win against ${loserUsername}:`, notificationData);
       }
 
+      // Process payment payout if this is a payment challenge
+      console.log(`💰 [${new Date().toISOString()}] Checking for payment processing for challenge ${match.challenge_id}...`);
+      await this.processPaymentPayout(match, gameResult);
+
       // Update challenge status to completed
       console.log(`📝 [${new Date().toISOString()}] Updating challenge ${match.challenge_id} status to 'completed'...`);
       await pool.query(`
@@ -456,6 +461,81 @@ class MatchResultChecker {
 
     } catch (error) {
       console.error(`❌ [${new Date().toISOString()}] Error processing match result:`, error);
+    }
+  }
+
+  async processPaymentPayout(match, gameResult) {
+    try {
+      console.log(`💰 [${new Date().toISOString()}] Processing payment payout for match ${match.id}...`);
+
+      // Get challenge details including payment info
+      const challengeQuery = await pool.query(`
+        SELECT c.*, 
+               challenger_user.username as challenger_username, challenger_user.phone as challenger_phone,
+               opponent_user.username as opponent_username, opponent_user.phone as opponent_phone
+        FROM challenges c
+        JOIN users challenger_user ON c.challenger = challenger_user.id
+        JOIN users opponent_user ON c.opponent = opponent_user.id
+        WHERE c.id = $1
+      `, [match.challenge_id]);
+
+      if (challengeQuery.rows.length === 0) {
+        console.log(`❌ [${new Date().toISOString()}] Challenge ${match.challenge_id} not found for payment processing`);
+        return;
+      }
+
+      const challenge = challengeQuery.rows[0];
+
+      if (!challenge.bet_amount || challenge.bet_amount <= 0) {
+        console.log(`ℹ️ [${new Date().toISOString()}] No payment amount for challenge ${match.challenge_id}, skipping payment processing`);
+        return;
+      }
+
+      console.log(`💰 [${new Date().toISOString()}] Processing payment for challenge ${match.challenge_id} with bet amount: ${challenge.bet_amount}`);
+
+      // Map result to the payment system's expected format
+      let result = gameResult.result;
+      if (gameResult.result === 'win') {
+        // Determine if challenger or opponent won
+        if (gameResult.winner.toLowerCase() === challenge.challenger_username.toLowerCase()) {
+          result = 'win'; // Challenger wins
+        } else {
+          result = 'resigned'; // Opponent wins (challenger lost)
+        }
+      } else {
+        result = 'stalemate'; // Draw
+      }
+
+      // Prepare challenger and opponent data for payment processing
+      const challengerData = {
+        id: challenge.challenger,
+        username: challenge.challenger_username,
+        phone: challenge.challenger_phone
+      };
+
+      const opponentData = {
+        id: challenge.opponent,
+        username: challenge.opponent_username,
+        phone: challenge.opponent_phone
+      };
+
+      console.log(`💸 [${new Date().toISOString()}] Initiating payment payout with result: ${result}`);
+      console.log(`👤 [${new Date().toISOString()}] Challenger: ${challengerData.username} (${challengerData.phone})`);
+      console.log(`👤 [${new Date().toISOString()}] Opponent: ${opponentData.username} (${opponentData.phone})`);
+
+      // Process the game payout using the payment controller
+      await paymentController.processGamePayout(
+        match.challenge_id, // Use challengeId, not match.id
+        result,
+        challengerData,
+        opponentData
+      );
+
+      console.log(`✅ [${new Date().toISOString()}] Payment payout processing completed for challenge ${match.challenge_id}`);
+
+    } catch (error) {
+      console.error(`❌ [${new Date().toISOString()}] Error processing payment payout:`, error);
+      // Don't throw the error - continue with match processing even if payment fails
     }
   }
 }

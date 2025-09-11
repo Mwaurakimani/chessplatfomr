@@ -1,0 +1,37 @@
+We have to integrate payment before gameplay from both challenger and opponent and after gameplay if one of the players won. The chess.com match outcome types are:
+win (pay out to winning party)
+resigned (pay out to other party)
+timeout (pay out to other party)
+checkmated (pay out to other party)
+insufficient (which is a draw so refund both parties)
+abandoned (which is a loss for the abandoning party so payout to other party)
+timevsinsufficient (which is a draw so refund both parties)
+repetition (which is a draw so refund both parties)
+threefold_repetition (which is a draw so refund both parties)
+stalemate (which is a draw so refund both parties)
+adjudication (pay out to other party)
+rule_violation (pay out to other party)
+agreed (which is a draw so refund both parties)
+fifty_move (which is a draw so refund both parties)
+aborted (which is a draw so refund both parties)
+Treat any other result as a draw and refund both parties. This data is found in the data object shown under name 'result' which is already being checked to determining winning player in a match.
+
+For the challenger, add "Phone number" and "Amount" (default 10) fields in the challenge modal just above the "Send Challenge" button (below time selection). This is the phone number to make a deposit request to for the amount they input.
+For the opponent, add "Phone number" field in a modal after they click "Accept" on a challenge. Update the challenge card and this new modal to show how much the challenger wants to play for.
+
+Follow the steps in repo to initiate deposit for both parties. You will have to run the code in auth.js to get an access token. That code gives a response like:
+```
+{
+  "access_token": "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMDAzIiwiaWF0IjoxNzU3NTQwOTc2LCJleHAiOjE3NTc1NDQ1NzZ9.nY7qkKXhit73kaLH2Tc1fRGuThbVoeeleVFgB_zhNO4",
+  "validity": 60,
+  "expiry": "2025-09-11T01:49:36.988"
+}
+```
+
+I believe it would be best to initiate payment when they click on the respective button to redirect them to Chess.com for their match.
+
+This `access_token` should be used as `ONIT_BEARER` variable to make deposit and withdraw requests with.
+
+For match outcomes where the payout goes to a party (or both), use the code in withdraw.js to pay out. For deposits, `SOURCE_ACCOUNT` should be the player's phone number and `DESTINATION_ACCOUNT` should be 0001650000002. For withdrawals (payouts) `SOURCE_ACCOUNT` should be 0001650000002 and `DESTINATION_ACCOUNT` should be the player's phone number.
+
+Use DEFAULT_DESTINATION_ACCOUNT 0001650000002 and other variables as in the https://github.com/erissatallan/chequemate-payment/ repo. ONIT_WEBHOOK_SECRET= is not required.  Any questions?

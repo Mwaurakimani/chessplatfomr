@@ -2,6 +2,7 @@ import express from 'express';
 import pool from '../config/database.js';
 import OngoingMatch from '../models/OngoingMatch.js';
 import https from 'https';
+import paymentController from '../controllers/paymentController.js';
 
 const router = express.Router();
 
@@ -84,7 +85,10 @@ router.post('/report-result', async (req, res) => {
     // 7. Update challenge status
     await pool.query(`UPDATE challenges SET status = 'completed' WHERE id = $1`, [challengeId]);
 
-    // 8. Send victory notification if there's a winner
+    // 8. Process payment payout if this is a payment challenge
+    await processPaymentForManualResult(challengeId, result, ongoingMatch);
+
+    // 9. Send victory notification if there's a winner
     if (winnerId && result !== 'draw') {
       const io = req.app.get('io');
       const notificationData = {
@@ -184,6 +188,79 @@ async function verifyGameUrl(gameUrl, player1, player2) {
       resolve(false);
     }
   });
+}
+
+// Process payment for manually reported results
+async function processPaymentForManualResult(challengeId, result, ongoingMatch) {
+  try {
+    console.log(`💰 Processing payment for manually reported result: ${result}`);
+
+    // Get challenge details including payment info
+    const challengeQuery = await pool.query(`
+      SELECT c.*, 
+             challenger_user.username as challenger_username, challenger_user.phone as challenger_phone,
+             opponent_user.username as opponent_username, opponent_user.phone as opponent_phone
+      FROM challenges c
+      JOIN users challenger_user ON c.challenger = challenger_user.id
+      JOIN users opponent_user ON c.opponent = opponent_user.id
+      WHERE c.id = $1
+    `, [challengeId]);
+
+    if (challengeQuery.rows.length === 0) {
+      console.log(`Challenge ${challengeId} not found for payment processing`);
+      return;
+    }
+
+    const challenge = challengeQuery.rows[0];
+
+    if (!challenge.bet_amount || challenge.bet_amount <= 0) {
+      console.log(`No payment amount for challenge ${challengeId}, skipping payment processing`);
+      return;
+    }
+
+    console.log(`Processing payment for challenge ${challengeId} with bet amount: ${challenge.bet_amount}`);
+
+    // Prepare challenger and opponent data
+    const challengerData = {
+      id: challenge.challenger,
+      username: challenge.challenger_username,
+      phone: challenge.challenger_phone
+    };
+
+    const opponentData = {
+      id: challenge.opponent,
+      username: challenge.opponent_username,
+      phone: challenge.opponent_phone
+    };
+
+    // Convert manual result format to payment system format
+    let paymentResult = result;
+    if (result === 'loss') {
+      // If reporter reported loss, they lost, so opponent won
+      paymentResult = 'resigned';
+    } else if (result === 'win') {
+      // If reporter reported win, they won
+      paymentResult = 'win';
+    } else if (result === 'draw') {
+      paymentResult = 'stalemate';
+    }
+
+    console.log(`Initiating payment payout with result: ${paymentResult}`);
+
+    // Process the game payout
+    await paymentController.processGamePayout(
+      ongoingMatch.id, // gameId
+      paymentResult,
+      challengerData,
+      opponentData
+    );
+
+    console.log(`Payment payout processing completed for challenge ${challengeId}`);
+
+  } catch (error) {
+    console.error(`Error processing payment for manual result:`, error);
+    // Don't throw - continue with result processing even if payment fails
+  }
 }
 
 export default router;

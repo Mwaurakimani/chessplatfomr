@@ -1,0 +1,113 @@
+🧪 Testing Onit API authentication...
+🔐 [AUTH] Starting authentication with Onit API...
+🌐 [AUTH] Host: api.onitmfbank.com
+👤 [AUTH] User ID: 1003
+📡 [AUTH] Making request to: https://api.onitmfbank.com/api/v1/auth/jwt
+📊 [AUTH] Response status: 200
+📋 [AUTH] Response headers: {
+  vary: 'Origin, Access-Control-Request-Method, Access-Control-Request-Headers',
+  'x-content-type-options': 'nosniff',
+  'x-xss-protection': '0',
+  'cache-control': 'no-cache, no-store, max-age=0, must-revalidate',
+  pragma: 'no-cache',
+  expires: '0',
+  'strict-transport-security': 'max-age=31536000 ; includeSubDomains',
+  'x-frame-options': 'DENY',
+  'content-type': 'application/json',
+  'transfer-encoding': 'chunked',
+  date: 'Wed, 10 Sep 2025 23:08:59 GMT',
+  'keep-alive': 'timeout=60',
+  connection: 'keep-alive'
+}
+📥 [AUTH] Raw response data: {"access_token":"eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMDAzIiwiaWF0IjoxNzU3NTQ1NzM5LCJleHAiOjE3NTc1NDkzMzl9.Uq_q2rZ2UPUFw9iDHmJ66Oz1IaMy3-hScSG2l9S15Z4","validity":60,"expiry":"2025-09-11T03:08:59.025"}
+🔍 [AUTH] Parsed response: {
+  access_token: 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMDAzIiwiaWF0IjoxNzU3NTQ1NzM5LCJleHAiOjE3NTc1NDkzMzl9.Uq_q2rZ2UPUFw9iDHmJ66Oz1IaMy3-hScSG2l9S15Z4',
+  validity: 60,
+  expiry: '2025-09-11T03:08:59.025'
+}
+✅ [AUTH] Authentication successful! Token expires at: 2025-09-10T23:58:58.628Z
+✅ Authentication successful!
+📋 Response: {
+  access_token: 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMDAzIiwiaWF0IjoxNzU3NTQ1NzM5LCJleHAiOjE3NTc1NDkzMzl9.Uq_q2rZ2UPUFw9iDHmJ66Oz1IaMy3-hScSG2l9S15Z4',
+  validity: 60,
+  expiry: '2025-09-11T03:08:59.025'
+}
+
+🧪 Testing deposit initiation...
+💰 [DEPOSIT_SERVICE] Starting deposit initiation...
+💰 [DEPOSIT_SERVICE] Source account (phone): 254759469851
+💰 [DEPOSIT_SERVICE] Amount: 10
+💰 [DEPOSIT_SERVICE] Request ID: TEST_1757545738660
+📋 [DEPOSIT_SERVICE] Full payload: {
+  sourceAccount: '254759469851',
+  destinationAccount: '0001650000002',
+  amount: 10,
+  channel: 'MPESA',
+  product: 'CA05',
+  requestId: 'TEST_1757545738660',
+  callbackUrl: 'https://chequemate.space/onit/deposit/callback'
+}
+📤 [DEPOSIT_SERVICE] Stringified payload: {"sourceAccount":"254759469851","destinationAccount":"0001650000002","amount":10,"channel":"MPESA","product":"CA05","requestId":"TEST_1757545738660","callbackUrl":"https://chequemate.space/onit/deposit/callback"}
+🌐 [DEPOSIT_SERVICE] Request options: {
+  url: 'https://api.onitmfbank.com/api/v1/transaction/deposit',
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    Authorization: 'Bearer eyJhbGciOiJIUzI1NiJ9...',
+    'Content-Length': 212
+  }
+}
+📊 [DEPOSIT_SERVICE] Response status: 500
+📋 [DEPOSIT_SERVICE] Response headers: {
+  vary: 'Origin, Access-Control-Request-Method, Access-Control-Request-Headers',
+  'x-content-type-options': 'nosniff',
+  'x-xss-protection': '0',
+  'cache-control': 'no-cache, no-store, max-age=0, must-revalidate',
+  pragma: 'no-cache',
+  expires: '0',
+  'strict-transport-security': 'max-age=31536000 ; includeSubDomains',
+  'x-frame-options': 'DENY',
+  'content-type': 'application/problem+json',
+  'transfer-encoding': 'chunked',
+  date: 'Wed, 10 Sep 2025 23:08:59 GMT',
+  connection: 'close'
+}
+📥 [DEPOSIT_SERVICE] Raw response: {"type":"about:blank","title":"Internal Server Error","status":500,"detail":"An unexpected error occurred","instance":"/api/v1/transaction/deposit","properties":{"description":{"message":"JSON parse error: Unrecognized field \"requestId\" (class com.onit.subaccounts.model.TopUpRequest), not marked as ignorable","path":"/api/v1/transaction/deposit","timestamp":"2025-09-10T23:08:59.088914834Z"}}}
+🔍 [DEPOSIT_SERVICE] Parsed response: {
+  type: 'about:blank',
+  title: 'Internal Server Error',
+  status: 500,
+  detail: 'An unexpected error occurred',
+  instance: '/api/v1/transaction/deposit',
+  properties: {
+    description: {
+      message: 'JSON parse error: Unrecognized field "requestId" (class com.onit.subaccounts.model.TopUpRequest), not marked as ignorable',     
+      path: '/api/v1/transaction/deposit',
+      timestamp: '2025-09-10T23:08:59.088914834Z'
+    }
+  }
+}
+✅ [DEPOSIT_SERVICE] Returning result: {
+  status: 500,
+  data: {
+    type: 'about:blank',
+    title: 'Internal Server Error',
+    status: 500,
+    detail: 'An unexpected error occurred',
+    instance: '/api/v1/transaction/deposit',
+    properties: { description: [Object] }
+  },
+  requestId: 'TEST_1757545738660'
+}
+📋 Deposit result: {
+  status: 500,
+  data: {
+    type: 'about:blank',
+    title: 'Internal Server Error',
+    status: 500,
+    detail: 'An unexpected error occurred',
+    instance: '/api/v1/transaction/deposit',
+    properties: { description: [Object] }
+  },
+  requestId: 'TEST_1757545738660'
+}
